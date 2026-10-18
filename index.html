@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Halaman pengelolaan data pengajar KLC">
+  <title>Data Pengajar | KLC</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">K</div>
+      <div>
+        <p class="eyebrow">KARISMA Learning Center</p>
+        <h1>Data Pengajar</h1>
+      </div>
+    </div>
+    <div class="account-area">
+      <span id="user-email" class="user-email"></span>
+      <button id="sign-out-btn" class="button button-ghost hidden" type="button">Keluar</button>
+    </div>
+  </header>
+
+  <main class="page-shell">
+    <section id="loading-view" class="panel loading-panel">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Memeriksa sesi login...</p>
+    </section>
+
+    <section id="login-view" class="panel login-panel hidden">
+      <div class="login-icon" aria-hidden="true">K</div>
+      <h2>Masuk ke Data Pengajar KLC</h2>
+      <p>Gunakan akun Google yang sudah terdaftar dan disetujui untuk mengakses halaman ini.</p>
+      <button id="google-login-btn" class="button button-primary button-wide" type="button">
+        <span class="google-mark" aria-hidden="true">G</span> Masuk dengan Google
+      </button>
+      <p id="login-message" class="message" role="status"></p>
+    </section>
+
+    <section id="access-denied-view" class="panel login-panel hidden">
+      <div class="warning-icon" aria-hidden="true">!</div>
+      <h2>Akses belum tersedia</h2>
+      <p>Akun ini belum terdaftar sebagai pengguna aktif KLC atau tidak memiliki izin PSD.</p>
+      <p class="muted">Jika merasa ini keliru, hubungi administrator KLC.</p>
+      <button id="denied-sign-out-btn" class="button button-secondary" type="button">Keluar</button>
+    </section>
+
+    <section id="teacher-attendance-view" class="hidden">
+      <div class="page-heading">
+        <div>
+          <p class="eyebrow">PENGAJAR KLC</p>
+          <h2>Absensi Mengajar</h2>
+          <p class="muted">Pilih program yang ditugaskan kepadamu, lalu ambil foto untuk mencatat kehadiran.</p>
+        </div>
+      </div>
+      <div id="teacher-notice" class="notice hidden" role="status"></div>
+      <section class="panel attendance-panel">
+        <div id="attendance-loading" class="muted">Memuat penugasan dan status absensi...</div>
+        <div id="attendance-content" class="hidden">
+          <div id="open-session-card" class="session-card hidden">
+            <p class="eyebrow">SESI BERJALAN</p>
+            <h3 id="open-session-title">Kamu sedang mengajar</h3>
+            <p id="open-session-detail" class="muted"></p>
+            <label class="form-field">
+              <span>Foto saat absen keluar <span class="required">*</span></span>
+              <input id="clock-out-photo" type="file" accept="image/*" capture="environment">
+            </label>
+            <label class="form-field">
+              <span>Catatan (opsional)</span>
+              <textarea id="clock-out-note" rows="3" maxlength="1000" placeholder="Kendala, evaluasi, atau saran selama kelas"></textarea>
+            </label>
+            <p class="form-hint">Lokasi diambil otomatis saat menekan tombol. Izinkan akses lokasi jika diminta.</p>
+            <button id="clock-out-btn" class="button button-primary button-wide" type="button">Absen keluar</button>
+          </div>
+          <form id="clock-in-form" class="attendance-form" novalidate>
+            <h3>Absen masuk</h3>
+            <label class="form-field">
+              <span>Program <span class="required">*</span></span>
+              <select id="attendance-program" required>
+                <option value="">Memuat program...</option>
+              </select>
+            </label>
+            <label class="form-field">
+              <span>Mapel <span class="required">*</span></span>
+              <select id="attendance-subject" required>
+                <option value="">Pilih program terlebih dahulu...</option>
+              </select>
+            </label>
+            <label class="form-field">
+              <span>Metode <span class="required">*</span></span>
+              <select id="attendance-method" required>
+                <option value="offline">Offline</option>
+                <option value="online">Online</option>
+                <option value="cancel">Cancel class</option>
+              </select>
+            </label>
+            <div id="student-select-wrap" class="form-field hidden">
+              <label for="attendance-students">Nama adik yang diajar <span class="required">*</span></label>
+              <select id="attendance-students" multiple size="6" aria-describedby="student-select-hint"></select>
+              <span id="student-select-hint" class="form-hint">Pilih 1 sampai 6 nama. Tekan Ctrl (komputer) atau gunakan pilihan multi-select pada perangkatmu.</span>
+              <p id="student-selection-count" class="form-hint">0 dari maksimal 6 adik dipilih.</p>
+            </div>
+            <label class="form-field">
+              <span>Foto saat absen masuk <span class="required">*</span></span>
+              <input id="clock-in-photo" type="file" accept="image/*" capture="environment" required>
+              <span class="form-hint">Gunakan kamera HP. Untuk kelas online boleh selfie atau screenshot Zoom/Meet. Jam, nama, dan lokasi ditempel otomatis pada foto.</span>
+            </label>
+            <label class="form-field">
+              <span>Catatan <span id="attendance-note-required" class="required hidden">* wajib untuk cancel class</span></span>
+              <textarea id="attendance-note" rows="3" maxlength="1000" placeholder="Opsional. Untuk cancel class, tulis alasannya."></textarea>
+            </label>
+            <p class="form-hint">Lokasi diambil otomatis saat menekan tombol. Absen tidak bisa dilakukan tanpa izin lokasi.</p>
+            <p id="attendance-form-message" class="message" role="status"></p>
+            <button id="clock-in-btn" class="button button-primary button-wide" type="submit">Absen masuk</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="panel directory-panel history-panel">
+        <div class="page-heading history-heading">
+          <div><p class="eyebrow">RIWAYAT</p><h3>Riwayat absen saya</h3><p class="muted">Hanya absen milikmu. Lupa absen masuk? Hubungi PJ program secara langsung.</p></div>
+          <label class="filter-field"><span class="filter-caption">Bulan</span><input id="history-month" type="month"></label>
+        </div>
+        <div id="history-rejected-banner" class="notice notice-error hidden" role="status"></div>
+        <div class="stats-grid history-stats">
+          <article class="stat-card"><span class="stat-label">Sesi bulan ini</span><strong id="history-total" class="stat-value">0</strong></article>
+          <article class="stat-card"><span class="stat-label">Disetujui / terkirim</span><strong id="history-approved" class="stat-value">0</strong></article>
+          <article class="stat-card"><span class="stat-label">Ditolak</span><strong id="history-rejected" class="stat-value">0</strong></article>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Tanggal</th><th>Program / Mapel</th><th>Metode</th><th>Masuk</th><th>Keluar</th><th>Adik</th><th>Status</th><th><span class="sr-only">Aksi</span></th></tr></thead>
+            <tbody id="history-table-body"><tr><td colspan="8" class="empty-cell">Memuat riwayat...</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section id="app-view" class="hidden psd-layout">
+      <aside class="psd-sidebar" aria-label="Navigasi PSD">
+        <div class="sidebar-heading"><span class="sidebar-kicker">MENU PSD</span><span class="sidebar-caption">Pengelolaan KLC</span></div>
+        <nav class="sidebar-nav">
+          <button class="sidebar-link active" type="button" data-psd-section="overview"><span class="nav-icon">⌂</span><span>Ringkasan</span></button>
+          <button class="sidebar-link" type="button" data-psd-section="teachers"><span class="nav-icon">♙</span><span>Data Pengajar</span></button>
+          <button class="sidebar-link" type="button" data-psd-section="students"><span class="nav-icon">♧</span><span>Data Siswa</span></button>
+          <button class="sidebar-link" type="button" data-psd-section="attendance"><span class="nav-icon">◷</span><span>Rekap Absensi</span></button>
+        </nav>
+        <div class="sidebar-foot"><span class="sidebar-dot"></span> Akses PSD aktif</div>
+      </aside>
+      <div class="psd-main">
+        <div id="notice" class="notice hidden" role="status"></div>
+        <section id="psd-overview-section" class="psd-section">
+          <div class="dashboard-welcome">
+            <div><p class="eyebrow">DASHBOARD PSD</p><h2>Ringkasan KLC</h2><p class="muted">Pantau data pengajar dan siswa dari satu halaman.</p></div>
+            <div class="welcome-mark" aria-hidden="true">K</div>
+          </div>
+          <div class="stats-grid dashboard-stats" aria-label="Ringkasan data">
+            <article class="stat-card"><span class="stat-label">Total pengajar</span><strong id="overview-teacher-count" class="stat-value">0</strong><span class="stat-note">Terdaftar di direktori</span></article>
+            <article class="stat-card"><span class="stat-label">Pengajar aktif</span><strong id="overview-active-teacher-count" class="stat-value">0</strong><span class="stat-note">Status aktif</span></article>
+            <article class="stat-card"><span class="stat-label">Data pembayaran perlu dilengkapi</span><strong id="overview-incomplete-count" class="stat-value">0</strong><span class="stat-note">Pengajar dengan data belum lengkap</span></article>
+            <article class="stat-card"><span class="stat-label">Total adik</span><strong id="overview-student-count" class="stat-value">0</strong><span class="stat-note">Semua status</span></article>
+            <article class="stat-card"><span class="stat-label">Adik aktif</span><strong id="overview-active-student-count" class="stat-value">0</strong><span class="stat-note">Terdaftar aktif</span></article>
+            <article class="stat-card"><span class="stat-label">Program aktif</span><strong id="overview-program-count" class="stat-value">0</strong><span class="stat-note">Program yang tersedia</span></article>
+          </div>
+          <div class="dashboard-shortcuts">
+            <button type="button" class="shortcut-card" data-psd-section="teachers"><span class="shortcut-icon">♙</span><span><strong>Kelola data pengajar</strong><small>Data rekening, e-wallet, email, dan penugasan program.</small></span><span class="shortcut-arrow">→</span></button>
+            <button type="button" class="shortcut-card" data-psd-section="students"><span class="shortcut-icon">♧</span><span><strong>Kelola data siswa</strong><small>Tambah, edit, impor, dan ekspor daftar adik.</small></span><span class="shortcut-arrow">→</span></button>
+          </div>
+          <p class="dashboard-note">Ringkasan ini dihitung dari data yang berhasil dimuat dari Supabase. Rekap kehadiran tersedia pada menu Rekap Absensi.</p>
+        </section>
+
+        <section id="psd-teachers-section" class="psd-section hidden">
+          <div class="page-heading">
+            <div><p class="eyebrow">PENGELOLAAN PSD</p><h2>Data Pengajar</h2><p class="muted">Kelola informasi rekening dan periksa data yang belum lengkap.</p></div>
+            <div class="heading-actions">
+              <button id="export-btn" class="button button-secondary" type="button">↓ Ekspor CSV</button>
+              <button id="import-btn" class="button button-secondary" type="button">↑ Impor CSV</button>
+              <input id="import-file" type="file" accept=".csv,text/csv" class="hidden">
+              <button id="add-teacher-btn" class="button button-primary" type="button">＋ Tambah pengajar</button>
+            </div>
+          </div>
+      <section class="stats-grid" aria-label="Ringkasan data">
+        <article class="stat-card">
+          <span class="stat-label">Total pengajar</span>
+          <strong id="total-count" class="stat-value">0</strong>
+          <span class="stat-note">Data di direktori</span>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">Data lengkap</span>
+          <strong id="complete-count" class="stat-value">0</strong>
+          <span class="stat-note">Minimal satu metode pembayaran lengkap</span>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">Perlu dilengkapi</span>
+          <strong id="incomplete-count" class="stat-value">0</strong>
+          <span class="stat-note">Masih ada kolom kosong</span>
+        </article>
+      </section>
+
+      <section class="panel directory-panel">
+        <div class="toolbar">
+          <label class="search-field">
+            <span class="sr-only">Cari nama pengajar</span>
+            <span class="search-icon" aria-hidden="true">⌕</span>
+            <input id="search-input" type="search" placeholder="Cari nama pengajar..." autocomplete="off">
+          </label>
+          <label class="filter-field">
+            <span class="sr-only">Filter kelengkapan data</span>
+            <select id="completeness-filter">
+              <option value="all">Semua data</option>
+              <option value="complete">Data lengkap</option>
+              <option value="incomplete">Perlu dilengkapi</option>
+            </select>
+          </label>
+          <label class="filter-field">
+            <span class="sr-only">Filter status pengajar</span>
+            <select id="active-filter">
+              <option value="all">Semua status</option>
+              <option value="active">Aktif</option>
+              <option value="inactive">Nonaktif</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="table-meta">
+          <p id="result-count">Memuat data...</p>
+          <p class="muted">Nomor rekening hanya ditampilkan untuk pengguna PSD berizin.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Nama pengajar</th>
+                <th>Email login</th>
+                <th>Program ditugaskan</th>
+                <th>Rekening bank</th>
+                <th>E-wallet</th>
+                <th>Kelengkapan</th>
+                <th>Status</th>
+                <th><span class="sr-only">Aksi</span></th>
+              </tr>
+            </thead>
+            <tbody id="teacher-table-body">
+              <tr><td colspan="8" class="empty-cell">Memuat data...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="empty-state" class="empty-state hidden">
+          <div class="empty-state-icon" aria-hidden="true">⌕</div>
+          <h3>Data tidak ditemukan</h3>
+          <p>Coba ubah kata kunci atau filter yang digunakan.</p>
+        </div>
+      </section>
+      <p class="privacy-note">Jaga kerahasiaan data rekening. Unduh CSV hanya jika diperlukan untuk pekerjaan PSD.</p>
+
+        </section>
+
+        <section id="psd-students-section" class="psd-section hidden">
+      <section class="panel directory-panel student-roster-panel">
+        <div class="page-heading roster-heading">
+          <div>
+            <p class="eyebrow">DATA SISWA KLC</p>
+            <h2>Daftar Adik</h2>
+            <p class="muted">Impor data dari Excel/Google Sheets dalam format CSV. Setiap adik hanya terdaftar pada satu program.</p>
+          </div>
+          <div class="heading-actions">
+            <button id="add-student-btn" class="button button-primary" type="button">＋ Tambah adik</button>
+            <button id="export-students-btn" class="button button-secondary" type="button">↓ Ekspor CSV adik</button>
+            <button id="import-students-btn" class="button button-primary" type="button">↑ Impor CSV adik</button>
+            <input id="import-students-file" type="file" accept=".csv,text/csv" class="hidden">
+          </div>
+        </div>
+        <p class="form-hint">Header CSV: <code>KELAS,NAMA ADIK,PROGRAM</code>. Isi PROGRAM dengan Privat, Reguler, atau UTBK. Data yang diimpor tidak otomatis menghapus data lama.</p>
+        <div id="student-roster-message" class="message" role="status"></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Kelas</th><th>Nama adik</th><th>Program</th><th>Status</th><th>Aksi</th></tr></thead>
+            <tbody id="student-table-body"><tr><td colspan="5" class="empty-cell">Memuat data adik...</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+        </section>
+
+        <section id="psd-attendance-section" class="psd-section hidden">
+          <div class="page-heading">
+            <div><p class="eyebrow">PENGELOLAAN PSD</p><h2>Rekap Absensi</h2><p class="muted">Lihat sesi mengajar yang tercatat beserta snapshot adik pada saat absen.</p></div>
+            <div class="heading-actions">
+              <button id="reload-recap-btn" class="button button-secondary" type="button">↻ Muat ulang</button>
+              <button id="export-view-btn" class="button button-secondary" type="button">↓ Ekspor tabel</button>
+              <button id="export-ready-btn" class="button button-primary" type="button">↓ Ekspor siap kirim</button>
+              <button id="mark-sent-btn" class="button button-primary hidden" type="button">✓ Tandai sudah dikirim</button>
+            </div>
+          </div>
+          <section class="stats-grid" aria-label="Ringkasan absensi">
+            <article class="stat-card"><span class="stat-label">Jumlah sesi</span><strong id="recap-total-count" class="stat-value">0</strong><span class="stat-note">Sesuai filter</span></article>
+            <article class="stat-card"><span class="stat-label">Belum clock-out</span><strong id="recap-open-count" class="stat-value">0</strong><span class="stat-note">Sesi masih berjalan</span></article>
+            <article class="stat-card"><span class="stat-label">Sudah selesai</span><strong id="recap-done-count" class="stat-value">0</strong><span class="stat-note">Sudah absen keluar</span></article>
+          </section>
+          <section class="panel directory-panel">
+            <div class="toolbar recap-toolbar">
+              <label class="filter-field"><span class="filter-caption">Dari tanggal</span><input id="recap-date-from" type="date"></label>
+              <label class="filter-field"><span class="filter-caption">Sampai tanggal</span><input id="recap-date-to" type="date"></label>
+              <label class="filter-field"><span class="filter-caption">Program</span><select id="recap-program-filter"><option value="all">Semua program</option></select></label>
+              <label class="filter-field"><span class="filter-caption">Status</span><select id="recap-status-filter"><option value="all">Semua status</option><option value="running">Berjalan</option><option value="pending">Menunggu PJ</option><option value="pj_approved">Menunggu PSD</option><option value="approved">Disetujui</option><option value="rejected">Ditolak</option><option value="sent">Terkirim</option></select></label>
+              <label class="search-field"><span class="filter-caption">Nama pengajar</span><span class="search-icon" aria-hidden="true">⌕</span><input id="recap-teacher-search" type="search" placeholder="Cari nama pengajar..." autocomplete="off"></label>
+            </div>
+            <div class="table-meta">
+              <p id="recap-result-count">Belum dimuat.</p>
+              <p class="muted">"Ekspor siap kirim" berisi semua sesi Disetujui dari bulan mana pun, tanpa mengikuti filter.</p>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Tanggal</th><th>Pengajar</th><th>Program / Mapel</th><th>Metode</th><th>Jam masuk</th><th>Jam keluar</th><th>Jumlah adik</th><th>Status</th><th><span class="sr-only">Aksi</span></th></tr></thead>
+                <tbody id="recap-table-body"><tr><td colspan="9" class="empty-cell">Buka menu ini untuk memuat rekap.</td></tr></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="attendance-detail-dialog" class="form-dialog">
+    <form method="dialog">
+      <div class="dialog-heading">
+        <div><p class="eyebrow">DETAIL SESI ABSENSI</p><h2 id="attendance-detail-title">Detail sesi</h2></div>
+        <button id="close-attendance-detail-btn" class="icon-button" type="button" aria-label="Tutup detail">×</button>
+      </div>
+      <div id="attendance-detail-content"></div>
+      <div id="review-box" class="review-box hidden">
+        <div class="form-section-title">Keputusan PSD</div>
+        <label class="form-field"><span>Catatan penolakan (wajib jika menolak)</span><textarea id="review-note" rows="2" maxlength="500" placeholder="Contoh: program salah, seharusnya Privat"></textarea></label>
+        <p id="review-message" class="message" role="status"></p>
+        <div class="review-actions">
+          <button id="review-reject-btn" class="button button-secondary" type="button">Tolak</button>
+          <button id="review-approve-btn" class="button button-primary" type="button">Setujui</button>
+        </div>
+      </div>
+      <div class="dialog-actions"><button id="close-attendance-detail-bottom" class="button button-ghost" type="button">Tutup</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="fix-dialog" class="form-dialog">
+    <form id="fix-form" novalidate>
+      <div class="dialog-heading">
+        <div><p class="eyebrow">PERBAIKI ABSEN</p><h2 id="fix-title">Perbaiki absen ditolak</h2></div>
+        <button id="close-fix-btn" class="icon-button" type="button" aria-label="Tutup form">×</button>
+      </div>
+      <input id="fix-attendance-id" type="hidden">
+      <p id="fix-reason" class="notice notice-error"></p>
+      <p class="form-hint">Jam dan lokasi tidak bisa diubah. Setelah disimpan, absen kembali dicek PJ.</p>
+      <label class="form-field"><span>Program <span class="required">*</span></span><select id="fix-program" required></select></label>
+      <label class="form-field"><span>Mapel <span class="required">*</span></span><select id="fix-subject" required></select></label>
+      <label class="form-field"><span>Metode <span class="required">*</span></span><select id="fix-method" required></select></label>
+      <div class="form-field">
+        <label for="fix-students">Adik yang hadir <span class="required">*</span></label>
+        <select id="fix-students" multiple size="6"></select>
+        <span class="form-hint">Pilih 1 sampai 6 nama.</span>
+      </div>
+      <label class="form-field"><span>Catatan</span><textarea id="fix-note" rows="3" maxlength="1000"></textarea></label>
+      <label class="form-field"><span>Ganti foto absen masuk (opsional)</span><input id="fix-photo-in" type="file" accept="image/*" capture="environment"></label>
+      <label id="fix-photo-out-wrap" class="form-field"><span>Ganti foto absen keluar (opsional)</span><input id="fix-photo-out" type="file" accept="image/*" capture="environment"></label>
+      <p id="fix-message" class="message" role="status"></p>
+      <div class="dialog-actions"><button id="cancel-fix-btn" class="button button-ghost" type="button">Batal</button><button id="save-fix-btn" class="button button-primary" type="submit">Simpan perbaikan</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="student-dialog" class="form-dialog">
+    <form id="student-form" method="dialog" class="dialog-form">
+      <div class="dialog-heading">
+        <div><p class="eyebrow">DATA SISWA KLC</p><h2 id="student-dialog-title">Tambah adik</h2></div>
+        <button id="close-student-dialog-btn" class="icon-button" type="button" aria-label="Tutup form">×</button>
+      </div>
+      <input id="student-id" type="hidden">
+      <label class="form-field"><span>Nama adik <span class="required">*</span></span><input id="student-full-name" type="text" maxlength="150" required placeholder="Nama lengkap adik"></label>
+      <label class="form-field"><span>Kelas <span class="required">*</span></span><input id="student-class-name" type="text" maxlength="120" required placeholder="Contoh: Kelas A / Kelompok 1"></label>
+      <label class="form-field"><span>Program <span class="required">*</span></span><select id="student-program-id" required><option value="">Pilih program</option></select></label>
+      <label class="checkbox-field"><input id="student-is-active" type="checkbox" checked><span>Adik aktif</span></label>
+      <p class="form-hint">Data yang sudah pernah tercatat dalam absensi tidak dihapus. Jika adik keluar, nonaktifkan datanya agar riwayat lama tetap aman.</p>
+      <p id="student-form-message" class="message" role="status"></p>
+      <div class="dialog-actions"><button id="cancel-student-btn" class="button button-ghost" type="button">Batal</button><button id="save-student-btn" class="button button-primary" type="submit">Simpan data</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="teacher-dialog" class="teacher-dialog">
+    <form id="teacher-form" novalidate>
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">DIREKTORI KLC</p>
+          <h2 id="dialog-title">Tambah pengajar</h2>
+        </div>
+        <button id="close-dialog-btn" class="icon-button" type="button" aria-label="Tutup form">×</button>
+      </div>
+      <input id="teacher-id" type="hidden">
+
+      <label class="form-field">
+        <span>Nama lengkap <span class="required">*</span></span>
+        <input id="full-name" type="text" maxlength="120" required placeholder="Nama lengkap pengajar">
+      </label>
+      <label class="form-field">
+        <span>Email login Google <span class="required">*</span></span>
+        <input id="login-email" type="email" maxlength="254" required autocomplete="email" placeholder="nama@gmail.com">
+        <span class="form-hint">Email harus sama dengan akun Google yang dipakai pengajar untuk login.</span>
+      </label>
+
+      <div class="form-section-title">Informasi rekening bank</div>
+      <label class="form-field">
+        <span>Jenis / nama bank</span>
+        <input id="bank-name" type="text" maxlength="80" placeholder="Contoh: BCA, BSI, SeaBank">
+      </label>
+      <label class="form-field">
+        <span>Nomor rekening</span>
+        <input id="bank-account-number" type="text" maxlength="40" inputmode="text" autocomplete="off" placeholder="Masukkan nomor rekening">
+      </label>
+
+      <div class="form-section-title">Informasi e-wallet</div>
+      <label class="form-field">
+        <span>Nama e-wallet</span>
+        <input id="ewallet-name" type="text" maxlength="40" placeholder="Contoh: DANA, GoPay">
+      </label>
+      <label class="form-field">
+        <span>Nomor e-wallet</span>
+        <input id="ewallet-number" type="text" maxlength="40" inputmode="text" autocomplete="off" placeholder="Masukkan nomor e-wallet">
+      </label>
+
+      <div class="form-section-title">Penugasan program</div>
+      <div id="program-assignment-list" class="program-assignment-list">
+        <p class="form-hint">Memuat daftar program...</p>
+      </div>
+      <p class="form-hint">Pilih program yang boleh diabsen oleh pengajar ini. Guru hanya akan melihat program yang aktif dan ditugaskan.</p>
+
+      <label class="checkbox-field">
+        <input id="is-active" type="checkbox" checked>
+        <span>Pengajar aktif</span>
+      </label>
+      <p class="form-hint">Nama wajib diisi. Informasi rekening yang belum tersedia boleh dikosongkan dan akan ditandai untuk dilengkapi.</p>
+      <p id="form-message" class="message" role="status"></p>
+      <div class="dialog-actions">
+        <button id="cancel-btn" class="button button-ghost" type="button">Batal</button>
+        <button id="save-btn" class="button button-primary" type="submit">Simpan data</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
