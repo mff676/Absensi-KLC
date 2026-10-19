@@ -1,57 +1,209 @@
 <!doctype html>
 <html lang="id">
+
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Pengelolaan daftar adik oleh PJ program KLC">
-  <title>Pengelolaan Adik | PJ KLC</title><link rel="stylesheet" href="./css/style.css">
+    <link rel="apple-touch-icon" sizes="180x180" href="favicon/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="favicon/favicon-16x16.png">
+  <link rel="manifest" href="favicon/site.webmanifest">
+  <link rel="shortcut icon" href="favicon/favicon.ico" type="image/x-icon">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.3.1/css/all.min.css" integrity="sha512-QeR2VH+lsBE5LSAe1Q5EnTBbe7XTBubt8dG93Y7gidSgdMCr8nVqKcfKAMyN96SV8KDbZVTDXChatu5G2KQGzg==" crossorigin="anonymous" referrerpolicy="no-referrer">
+  <title>Pengelolaan Adik | PJ KLC</title>
+  <link rel="stylesheet" href="./css/style.css">
 </head>
+
 <body>
-  <header class="topbar"><div class="brand"><div class="brand-mark">K</div><div><p class="eyebrow">KARISMA Learning Center</p><h1>Pengelolaan Adik</h1></div></div><div class="account-area"><span id="pj-user-email" class="user-email"></span><button id="pj-sign-out" class="button button-ghost hidden" type="button">Keluar</button></div></header>
+  <header class="topbar">
+    <div class="brand">
+      <img src="images/Logo KLC.png" alt="Logo KLC" class="brand-logo">
+      <div>
+        <p class="eyebrow">KARISMA Learning Center</p>
+        <h1>Pengelolaan Adik</h1>
+      </div>
+    </div>
+      <div class="right-side">
+      <a href="index.html" class="button button-primary clear-a" type="button">Login Pengajar/PSD</a>
+    </div>
+    <div class="account-area"><span id="pj-user-email" class="user-email"></span><button id="pj-sign-out"
+        class="button button-ghost hidden" type="button">Keluar</button>
+      </div>
+  </header>
   <main class="page-shell">
-    <section id="pj-loading" class="panel loading-panel"><div class="spinner" aria-hidden="true"></div><p>Memeriksa akses PJ...</p></section>
-    <section id="pj-login" class="panel login-panel hidden"><div class="login-icon">K</div><h2>Masuk sebagai PJ KLC</h2><p>Gunakan akun Google yang sudah didaftarkan sebagai PJ untuk satu atau beberapa program.</p><button id="pj-google-login" class="button button-primary button-wide" type="button">Masuk dengan Google</button><p id="pj-login-message" class="message" role="status"></p></section>
-    <section id="pj-denied" class="panel login-panel hidden"><div class="warning-icon">!</div><h2>Akses PJ belum tersedia</h2><p>Akun ini tidak memiliki penugasan PJ aktif. Hubungi PSDM jika penugasan perlu diperiksa.</p><button id="pj-denied-sign-out" class="button button-secondary" type="button">Keluar</button></section>
+    <section id="pj-loading" class="panel loading-panel">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Memeriksa akses PJ...</p>
+    </section>
+    <section id="pj-login" class="panel login-panel hidden">
+      <img src="images/Logo KLC.png" alt="Logo KLC" class="brand-logo login-icon">
+      <h2>Masuk sebagai PJ KLC</h2>
+      <p>Gunakan akun Google yang sudah didaftarkan sebagai PJ untuk satu atau beberapa program.</p><button
+        id="pj-google-login" class="button button-primary button-wide" type="button">Masuk dengan Google</button>
+      <p id="pj-login-message" class="message" role="status"></p>
+    </section>
+    <section id="pj-denied" class="panel login-panel hidden">
+      <div class="warning-icon">!</div>
+      <h2>Akses PJ belum tersedia</h2>
+      <p>Akun ini tidak memiliki penugasan PJ aktif. Hubungi PSDM jika penugasan perlu diperiksa.</p><button
+        id="pj-denied-sign-out" class="button button-secondary" type="button">Keluar</button>
+    </section>
     <section id="pj-app" class="hidden">
-      <nav class="pj-tabs" aria-label="Menu PJ"><button class="pj-tab active" type="button" data-pj-tab="students">Daftar Adik</button><button class="pj-tab" type="button" data-pj-tab="attendance">Rekap Absensi</button></nav>
+      <nav class="pj-tabs" aria-label="Menu PJ"><button class="pj-tab active" type="button"
+          data-pj-tab="students">Daftar Adik</button><button class="pj-tab" type="button" data-pj-tab="attendance">Rekap
+          Absensi</button></nav>
       <div id="pj-students-tab">
-      <div class="page-heading"><div><p class="eyebrow">DASHBOARD PJ</p><h2>Daftar Adik</h2><p class="muted">PJ hanya dapat melihat dan mengubah data siswa pada program yang ditugaskan kepadanya.</p></div><div class="heading-actions"><button id="pj-add-student" class="button button-primary" type="button">＋ Tambah adik</button><button id="pj-export-students" class="button button-secondary" type="button">↓ Ekspor CSV</button></div></div>
-      <div id="pj-notice" class="notice hidden" role="status"></div>
-      <section class="panel directory-panel"><div class="toolbar"><label class="search-field"><span class="sr-only">Cari adik</span><input id="pj-search" type="search" placeholder="Cari nama atau kelas..."></label><label class="filter-field"><span class="sr-only">Filter program</span><select id="pj-program-filter"><option value="all">Semua program yang dikelola</option></select></label><label class="filter-field"><span class="sr-only">Filter status</span><select id="pj-status-filter"><option value="all">Semua status</option><option value="active">Aktif</option><option value="inactive">Nonaktif</option></select></label></div><div class="table-wrap"><table><thead><tr><th>Kelas</th><th>Nama adik</th><th>Program</th><th>Status</th><th>Aksi</th></tr></thead><tbody id="pj-student-table"><tr><td colspan="5" class="empty-cell">Memuat daftar adik...</td></tr></tbody></table></div></section>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">DASHBOARD PJ</p>
+            <h2>Daftar Adik</h2>
+            <p class="muted">PJ hanya dapat melihat dan mengubah data siswa pada program yang ditugaskan kepadanya.</p>
+          </div>
+          <div class="heading-actions"><button id="pj-add-student" class="button button-primary" type="button">＋ Tambah
+              adik</button><button id="pj-export-students" class="button button-secondary" type="button">↓ Ekspor
+              CSV</button></div>
+        </div>
+        <div id="pj-notice" class="notice hidden" role="status"></div>
+        <section class="panel directory-panel">
+          <div class="toolbar"><label class="search-field"><span class="sr-only">Cari adik</span><input id="pj-search"
+                type="search" placeholder="Cari nama atau kelas..."></label><label class="filter-field"><span
+                class="sr-only">Filter program</span><select id="pj-program-filter">
+                <option value="all">Semua program yang dikelola</option>
+              </select></label><label class="filter-field"><span class="sr-only">Filter status</span><select
+                id="pj-status-filter">
+                <option value="all">Semua status</option>
+                <option value="active">Aktif</option>
+                <option value="inactive">Nonaktif</option>
+              </select></label></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Kelas</th>
+                  <th>Nama adik</th>
+                  <th>Program</th>
+                  <th>Status</th>
+                  <th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="pj-student-table">
+                <tr>
+                  <td colspan="5" class="empty-cell">Memuat daftar adik...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
 
       <div id="pj-attendance-tab" class="hidden">
-        <div class="page-heading"><div><p class="eyebrow">DASHBOARD PJ</p><h2>Rekap Absensi</h2><p class="muted">Cek absensi di program yang kamu pegang. Absen milikmu sendiri dicek oleh PSD.</p></div><div class="heading-actions"><button id="pj-reload-attendance" class="button button-secondary" type="button">↻ Muat ulang</button></div></div>
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">DASHBOARD PJ</p>
+            <h2>Rekap Absensi</h2>
+            <p class="muted">Cek absensi di program yang kamu pegang. Absen milikmu sendiri dicek oleh PSD.</p>
+          </div>
+          <div class="heading-actions"><button id="pj-reload-attendance" class="button button-secondary" type="button">↻
+              Muat ulang</button></div>
+        </div>
         <section class="stats-grid">
-          <article class="stat-card"><span class="stat-label">Menunggu cek PJ</span><strong id="pj-pending-count" class="stat-value">0</strong><span class="stat-note">Pada rentang tanggal ini</span></article>
-          <article class="stat-card"><span class="stat-label">Belum clock-out</span><strong id="pj-running-count" class="stat-value">0</strong><span class="stat-note">Sesi masih berjalan</span></article>
-          <article class="stat-card"><span class="stat-label">Jumlah sesi</span><strong id="pj-total-count" class="stat-value">0</strong><span class="stat-note">Sesuai filter</span></article>
+          <article class="stat-card"><span class="stat-label">Menunggu cek PJ</span><strong id="pj-pending-count"
+              class="stat-value">0</strong><span class="stat-note">Pada rentang tanggal ini</span></article>
+          <article class="stat-card"><span class="stat-label">Belum clock-out</span><strong id="pj-running-count"
+              class="stat-value">0</strong><span class="stat-note">Sesi masih berjalan</span></article>
+          <article class="stat-card"><span class="stat-label">Jumlah sesi</span><strong id="pj-total-count"
+              class="stat-value">0</strong><span class="stat-note">Sesuai filter</span></article>
         </section>
         <section class="panel directory-panel">
           <div class="toolbar recap-toolbar">
-            <label class="filter-field"><span class="filter-caption">Dari tanggal</span><input id="pj-date-from" type="date"></label>
-            <label class="filter-field"><span class="filter-caption">Sampai tanggal</span><input id="pj-date-to" type="date"></label>
-            <label class="filter-field"><span class="filter-caption">Status</span><select id="pj-attendance-status"><option value="all">Semua status</option><option value="pending" selected>Menunggu PJ</option><option value="running">Berjalan</option><option value="pj_approved">Menunggu PSD</option><option value="approved">Disetujui</option><option value="rejected">Ditolak</option><option value="sent">Terkirim</option></select></label>
-            <label class="search-field"><span class="filter-caption">Nama pengajar</span><input id="pj-teacher-search" type="search" placeholder="Cari nama pengajar..." autocomplete="off"></label>
+            <label class="filter-field"><span class="filter-caption">Dari tanggal</span><input id="pj-date-from"
+                type="date"></label>
+            <label class="filter-field"><span class="filter-caption">Sampai tanggal</span><input id="pj-date-to"
+                type="date"></label>
+            <label class="filter-field"><span class="filter-caption">Status</span><select id="pj-attendance-status">
+                <option value="all">Semua status</option>
+                <option value="pending" selected>Menunggu PJ</option>
+                <option value="running">Berjalan</option>
+                <option value="pj_approved">Menunggu PSD</option>
+                <option value="approved">Disetujui</option>
+                <option value="rejected">Ditolak</option>
+                <option value="sent">Terkirim</option>
+              </select></label>
+            <label class="search-field"><span class="filter-caption">Nama pengajar</span><input id="pj-teacher-search"
+                type="search" placeholder="Cari nama pengajar..." autocomplete="off"></label>
           </div>
-          <div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Pengajar</th><th>Program / Mapel</th><th>Metode</th><th>Masuk</th><th>Keluar</th><th>Adik</th><th>Status</th><th><span class="sr-only">Aksi</span></th></tr></thead><tbody id="pj-attendance-table"><tr><td colspan="9" class="empty-cell">Buka tab ini untuk memuat rekap.</td></tr></tbody></table></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tanggal</th>
+                  <th>Pengajar</th>
+                  <th>Program / Mapel</th>
+                  <th>Metode</th>
+                  <th>Masuk</th>
+                  <th>Keluar</th>
+                  <th>Adik</th>
+                  <th>Status</th>
+                  <th><span class="sr-only">Aksi</span></th>
+                </tr>
+              </thead>
+              <tbody id="pj-attendance-table">
+                <tr>
+                  <td colspan="9" class="empty-cell">Buka tab ini untuk memuat rekap.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </section>
       </div>
     </section>
   </main>
-  <dialog id="pj-student-dialog" class="form-dialog"><form id="pj-student-form"><div class="dialog-heading"><div><p class="eyebrow">DATA SISWA KLC</p><h2 id="pj-dialog-title">Tambah adik</h2></div><button id="pj-close-dialog" class="icon-button" type="button" aria-label="Tutup form">×</button></div><input id="pj-student-id" type="hidden"><label class="form-field"><span>Nama adik <span class="required">*</span></span><input id="pj-student-name" maxlength="150" required></label><label class="form-field"><span>Kelas <span class="required">*</span></span><input id="pj-student-class" maxlength="120" required></label><label class="form-field"><span>Program <span class="required">*</span></span><select id="pj-student-program" required></select></label><label class="checkbox-field"><input id="pj-student-active" type="checkbox" checked><span>Adik aktif</span></label><p class="form-hint">Data yang sudah tercatat dalam absensi tidak dihapus. Nonaktifkan jika adik tidak lagi mengikuti program.</p><p id="pj-student-message" class="message" role="status"></p><div class="dialog-actions"><button id="pj-cancel-dialog" class="button button-ghost" type="button">Batal</button><button id="pj-save-student" class="button button-primary" type="submit">Simpan data</button></div></form></dialog>
+  <dialog id="pj-student-dialog" class="form-dialog">
+    <form id="pj-student-form">
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">DATA SISWA KLC</p>
+          <h2 id="pj-dialog-title">Tambah adik</h2>
+        </div><button id="pj-close-dialog" class="icon-button" type="button" aria-label="Tutup form">×</button>
+      </div><input id="pj-student-id" type="hidden"><label class="form-field"><span>Nama adik <span
+            class="required">*</span></span><input id="pj-student-name" maxlength="150" required></label><label
+        class="form-field"><span>Kelas <span class="required">*</span></span><input id="pj-student-class"
+          maxlength="120" required></label><label class="form-field"><span>Program <span
+            class="required">*</span></span><select id="pj-student-program" required></select></label><label
+        class="checkbox-field"><input id="pj-student-active" type="checkbox" checked><span>Adik aktif</span></label>
+      <p class="form-hint">Data yang sudah tercatat dalam absensi tidak dihapus. Nonaktifkan jika adik tidak lagi
+        mengikuti program.</p>
+      <p id="pj-student-message" class="message" role="status"></p>
+      <div class="dialog-actions"><button id="pj-cancel-dialog" class="button button-ghost"
+          type="button">Batal</button><button id="pj-save-student" class="button button-primary" type="submit">Simpan
+          data</button></div>
+    </form>
+  </dialog>
   <dialog id="pj-detail-dialog" class="form-dialog">
     <form method="dialog">
-      <div class="dialog-heading"><div><p class="eyebrow">DETAIL SESI ABSENSI</p><h2 id="pj-detail-title">Detail sesi</h2></div><button id="pj-close-detail" class="icon-button" type="button" aria-label="Tutup detail">×</button></div>
+      <div class="dialog-heading">
+        <div>
+          <p class="eyebrow">DETAIL SESI ABSENSI</p>
+          <h2 id="pj-detail-title">Detail sesi</h2>
+        </div><button id="pj-close-detail" class="icon-button" type="button" aria-label="Tutup detail">×</button>
+      </div>
       <div id="attendance-detail-content"></div>
       <div id="pj-review-box" class="review-box hidden">
         <div class="form-section-title">Keputusan PJ</div>
-        <label class="form-field"><span>Catatan penolakan (wajib jika menolak)</span><textarea id="pj-review-note" rows="2" maxlength="500" placeholder="Contoh: foto tidak sesuai"></textarea></label>
+        <label class="form-field"><span>Catatan penolakan (wajib jika menolak)</span><textarea id="pj-review-note"
+            rows="2" maxlength="500" placeholder="Contoh: foto tidak sesuai"></textarea></label>
         <p id="pj-review-message" class="message" role="status"></p>
-        <div class="review-actions"><button id="pj-reject-btn" class="button button-secondary" type="button">Tolak</button><button id="pj-approve-btn" class="button button-primary" type="button">Setujui</button></div>
+        <div class="review-actions"><button id="pj-reject-btn" class="button button-secondary"
+            type="button">Tolak</button><button id="pj-approve-btn" class="button button-primary"
+            type="button">Setujui</button></div>
       </div>
       <p id="pj-review-info" class="form-hint hidden"></p>
-      <div class="dialog-actions"><button id="pj-close-detail-bottom" class="button button-ghost" type="button">Tutup</button></div>
+      <div class="dialog-actions"><button id="pj-close-detail-bottom" class="button button-ghost"
+          type="button">Tutup</button></div>
     </form>
   </dialog>
   <script type="module" src="./js/pj.js"></script>
-</body></html>
+</body>
+
+</html>

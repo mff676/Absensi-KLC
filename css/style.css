@@ -1,19 +1,44 @@
 :root {
   color-scheme: light;
-  --ink: #1e293b;
-  --muted: #64748b;
-  --line: #e2e8f0;
-  --surface: #ffffff;
-  --page: #f5f7fb;
-  --primary: #176b55;
-  --primary-hover: #115443;
-  --primary-soft: #e8f5ef;
-  --warning: #9a6700;
-  --warning-soft: #fff5d6;
-  --danger: #b42318;
-  --danger-soft: #fff0ee;
-  --shadow: 0 12px 36px rgba(15, 23, 42, .08);
+
+  /* Text */
+  --ink: #20335F;
+  --muted: #566B9C;
+
+  /* Borders and surfaces */
+  --line: #E2E8F0;
+  --surface: #FFFFFF;
+  --page: #F5F7FB;
+
+  /* Primary: blue */
+  --primary: #29477F;
+  --primary-hover: #20335F;
+  --primary-soft: #BED0F4;
+
+  /* Warning: yellow */
+  --warning: #9A6700;
+  --warning-soft: #FFF0AD;
+
+  /* Danger: red */
+  --danger: #B42318;
+  --danger-soft: #FFF0EE;
+
+  /* Accent colors */
+  --accent-yellow: #FFD91A;
+  --accent-orange: #FCAF17;
+  --accent-teal: #AAD7D5;
+
+  /* Additional palette */
+  --blue-light: #8297C9;
+  --blue-mid: #40588E;
+  --cream: #FFFAE5;
+  --gray: #ADADAD;
+  --gray-dark: #606060;
+
+  /* Shadow */
+  --shadow: 0 12px 36px rgba(32, 51, 95, .12);
 }
+
 * { box-sizing: border-box; }
 body {
   margin: 0; background: var(--page); color: var(--ink);
@@ -24,24 +49,37 @@ button { cursor: pointer; }
 button:focus-visible, input:focus-visible, select:focus-visible {
   outline: 3px solid rgba(23, 107, 85, .22); outline-offset: 2px;
 }
+.clear-a{
+  text-decoration: none;
+}
 .hidden { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 .topbar {
   display: flex; justify-content: space-between; align-items: center; gap: 20px;
-  padding: 18px max(24px, calc((100% - 1180px) / 2)); background: var(--surface);
+  padding: 14px max(18px, calc((100% - 1320px) / 2)); background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 12px; }
-.brand-mark, .login-icon {
+/* .brand-mark, .login-icon {
   display: grid; place-items: center; width: 44px; height: 44px; border-radius: 14px;
   background: var(--primary); color: white; font-size: 22px; font-weight: 800;
+  } */
+  .brand-logo {
+   display: grid; 
+   place-items: center;
+   border-radius: 14px;
+  width: 60px;
+  height: 60px;
+  object-fit: contain;
+  display: block;
+  flex-shrink: 0;
 }
 .eyebrow { margin: 0 0 3px; color: var(--primary); font-size: 11px; letter-spacing: .12em; font-weight: 800; }
 h1, h2, h3, p { margin-top: 0; }
 h1 { font-size: 19px; margin-bottom: 0; letter-spacing: -.02em; }
 h2 { font-size: 25px; line-height: 1.2; margin-bottom: 8px; letter-spacing: -.035em; }
 h3 { font-size: 16px; margin-bottom: 6px; }
-.account-area { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.account-area, .right-side { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .user-email { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 13px; }
 .page-shell { max-width: 1180px; margin: 34px auto 64px; padding: 0 24px; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 2px 8px rgba(15,23,42,.02); }
@@ -144,8 +182,8 @@ tbody tr:hover { background: #fbfdfc; }
   th, td { padding-left: 14px; padding-right: 14px; }
   .login-panel { padding: 28px 22px; }
 }
-@media (max-width: 420px) {
-  .brand-mark { width: 38px; height: 38px; }
+@media (max-width: 450px) {
+  .brand-logo { width: 48px; height: 48px; }
   .eyebrow { font-size: 9px; }
   h1 { font-size: 16px; }
   .account-area { gap: 4px; }
@@ -269,3 +307,12 @@ tbody tr:hover { background: #fbfdfc; }
 .pj-tab.active { background: var(--primary-soft); color: var(--primary); }
 .filter-field input[type="month"] { width: 100%; height: 42px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--ink); }
 @media (max-width: 760px) { .history-heading { padding: 16px 14px 0; } .history-stats { padding: 0 14px; } .history-panel > .notice { margin: 0 14px 12px; } }
+
+/* Impor absen lama (sementara) */
+.legacy-panel { display: flex; justify-content: space-between; align-items: center; gap: 18px; margin-top: 22px; padding: 20px; }
+.legacy-panel h3 { margin-bottom: 4px; }
+.legacy-panel .form-hint { margin: 0; max-width: 560px; }
+.legacy-dialog { width: min(640px, calc(100% - 28px)); }
+.legacy-list { margin: 0 0 14px; padding-left: 18px; font-size: 13px; max-height: 240px; overflow-y: auto; }
+.legacy-list li { padding: 3px 0; }
+@media (max-width: 760px) { .legacy-panel { flex-direction: column; align-items: stretch; } }

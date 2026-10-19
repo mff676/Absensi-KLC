@@ -4,6 +4,7 @@ import {
   SUBJECTS_BY_PROGRAM, METHOD_LABELS, STATUS_LABELS, ATTENDANCE_COLUMNS, statusKey, statusBadge, formatDate, formatTime,
   formatDateTime, mapsUrl, fixDeadline, getLocation, stampPhoto, watermarkLines, downloadCsv, attendanceDetailHtml, showAttendancePhoto
 } from "./attendance-utils.js";
+import { LEGACY_HEADERS, prepareLegacyRows } from "./legacy-import.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
@@ -238,7 +239,7 @@ function renderAttendanceRecap() {
       <td>${escapeHtml(METHOD_LABELS[row.method] || "-")}</td>
       <td>${escapeHtml(formatTime(row.clock_in_at))}</td>
       <td>${row.method === "cancel" ? '<span class="muted">-</span>'
-        : row.clock_out_at ? `${escapeHtml(formatTime(row.clock_out_at))}${row.auto_closed ? '<span class="cell-subtext">otomatis</span>' : ""}`
+      : row.clock_out_at ? `${escapeHtml(formatTime(row.clock_out_at))}${row.auto_closed ? '<span class="cell-subtext">otomatis</span>' : ""}`
         : '<span class="muted">Belum clock-out</span>'}</td>
       <td>${escapeHtml(recapStudentCount(row))} adik</td>
       <td>${statusBadge(row)}</td>
@@ -386,8 +387,8 @@ function renderTeachers() {
       <td class="account-cell">${walletText(teacher)}</td>
       <td>${completenessLabel(teacher)}</td>
       <td>${teacher.is_active
-        ? '<span class="badge badge-active">Aktif</span>'
-        : '<span class="badge badge-inactive">Nonaktif</span>'}</td>
+      ? '<span class="badge badge-active">Aktif</span>'
+      : '<span class="badge badge-inactive">Nonaktif</span>'}</td>
       <td><button class="row-action" type="button" data-edit-id="${escapeHtml(teacher.id)}">Edit</button></td>
     </tr>`).join("") : "";
   if (!rows.length) {
@@ -415,6 +416,7 @@ async function checkAccess() {
   const { data: { session }, error } = await supabase.auth.getSession();
   if (error) throw error;
   currentUser = session?.user ?? null;
+  updateTopbarAuth(!!currentUser);
   if (!currentUser) {
     $("#user-email").textContent = "";
     $("#sign-out-btn").classList.add("hidden");
@@ -422,13 +424,11 @@ async function checkAccess() {
     return;
   }
 
-  $("#user-email").textContent = currentUser.email || "";
-  $("#sign-out-btn").classList.remove("hidden");
-
+  
   // Profil harus dibuat/disetujui oleh admin; role tidak boleh ditentukan dari frontend.
   let { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("id, role, is_active, email")
+    .select("id, role, is_active, email, full_name")
     .eq("id", currentUser.id)
     .maybeSingle();
   if (profileError) throw profileError;
@@ -447,7 +447,8 @@ async function checkAccess() {
     if (refreshed.error) throw refreshed.error;
     profile = refreshed.data;
   }
-
+  $("#user-email").textContent = profile?.full_name || currentUser.email || ""; $("#sign-out-btn").classList.remove("hidden");
+  
   isPsd = profile?.role === "psd" && profile?.is_active === true;
   isTeacher = profile?.role === "teacher" && profile?.is_active === true;
 
@@ -973,6 +974,18 @@ function exportCsv() {
   URL.revokeObjectURL(url);
   showNotice(`CSV berhasil disiapkan (${rows.length} pengajar). Simpan file dengan aman.`);
 }
+function updateTopbarAuth(isLoggedIn) {
+  const accountArea = document.querySelector(".account-area");
+  const rightSide = document.querySelector(".right-side");
+
+  if (accountArea) {
+    accountArea.classList.toggle("hidden", !isLoggedIn);
+  }
+
+  if (rightSide) {
+    rightSide.classList.toggle("hidden", isLoggedIn);
+  }
+}
 
 function parseCsv(text) {
   // Parser CSV kecil yang mendukung koma, tanda kutip, dan baris baru di dalam kutipan.
@@ -1185,6 +1198,70 @@ async function importStudents(file) {
   } finally { button.disabled = false; button.textContent = "↑ Impor CSV adik"; $("#import-students-file").value = ""; }
 }
 
+/* ===== Format CSV (template kosong) untuk impor ===== */
+
+// Header sama dengan yang dibaca parseCsv / parseStudentCsv / prepareLegacyRows.
+const CSV_TEMPLATES = {
+  teachers: { file: "format-impor-pengajar.csv", headers: ["Nama Lengkap", "Email Login", "Nama Bank", "Nomor Rekening", "Nama E-wallet", "Nomor E-wallet"] },
+  students: { file: "format-impor-adik.csv", headers: ["KELAS", "NAMA ADIK", "PROGRAM"] },
+  legacy: { file: "format-impor-absen-lama.csv", headers: LEGACY_HEADERS }
+};
+
+function downloadTemplate(name) {
+  const template = CSV_TEMPLATES[name];
+  downloadCsv(template.file, [template.headers]);
+}
+
+/* ===== IMPOR ABSEN LAMA DARI GFORM (SEMENTARA) ===== */
+
+let legacyRowsToImport = [];
+
+async function openLegacyImport(file) {
+  if (!isPsd || !file) return;
+  if (file.size > 5 * 1024 * 1024) { showNotice("Ukuran file maksimal 5 MB.", "error"); return; }
+  try {
+    // Data siswa termasuk yang nonaktif, karena absen lama bisa berisi adik yang sudah keluar.
+    const result = prepareLegacyRows(await file.text(), { teachers: teacherRows, programs: programRows, students: studentRows });
+    legacyRowsToImport = result.valid;
+    $("#legacy-summary").innerHTML = `<strong>${result.valid.length}</strong> baris siap diimpor, <strong>${result.errors.length}</strong> baris bermasalah.`;
+    $("#legacy-errors").innerHTML = result.errors.length
+      ? `<div class="form-section-title">Baris bermasalah (tidak ikut diimpor)</div><ul class="legacy-list">${result.errors.map((e) => `<li><strong>Baris ${e.line}:</strong> ${escapeHtml(e.message)}</li>`).join("")}</ul>
+         <p class="form-hint">Perbaiki di sheet lalu impor ulang. Baris yang sudah masuk tidak akan dobel.</p>`
+      : "";
+    $("#legacy-preview").innerHTML = result.preview.length
+      ? `<div class="form-section-title">Contoh baris siap diimpor</div><ul class="legacy-list">${result.preview.slice(0, 5).map((p) =>
+          `<li>Baris ${p.line}: ${escapeHtml(formatDate(p.date))} · ${escapeHtml(p.teacher)} · ${escapeHtml(p.program)} · ${escapeHtml(p.subject || "-")} · ${p.count} adik · ${escapeHtml(STATUS_LABELS[p.status])}</li>`).join("")}</ul>`
+      : "";
+    $("#legacy-message").textContent = "";
+    $("#confirm-legacy-btn").disabled = !result.valid.length;
+    $("#confirm-legacy-btn").textContent = `Impor ${result.valid.length} baris`;
+    $("#legacy-dialog").showModal();
+  } catch (error) {
+    showNotice(errorMessage(error), "error");
+  } finally {
+    $("#legacy-import-file").value = "";
+  }
+}
+
+async function confirmLegacyImport() {
+  if (!legacyRowsToImport.length) return;
+  const button = $("#confirm-legacy-btn");
+  button.disabled = true;
+  button.textContent = "Mengimpor...";
+  try {
+    const { data, error } = await supabase.rpc("import_legacy_attendance", { p_rows: legacyRowsToImport });
+    if (error) throw error;
+    $("#legacy-dialog").close();
+    legacyRowsToImport = [];
+    showNotice(`Impor selesai: ${data.inserted} absen baru, ${data.skipped} dilewati karena sudah pernah diimpor. Atur rentang tanggal untuk melihatnya.`);
+    await loadAttendanceRecap();
+  } catch (error) {
+    $("#legacy-message").textContent = errorMessage(error);
+    button.disabled = false;
+    button.textContent = "Coba lagi";
+  }
+}
+
 function exportStudentsCsv() {
   if (!isPsd) { showNotice("Ekspor daftar adik hanya tersedia untuk PSDM.", "error"); return; }
   const csvCell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
@@ -1289,6 +1366,7 @@ async function signOut() {
   currentUser = null;
   isPsd = false;
   teacherRows = [];
+  updateTopbarAuth(false);
   showView("login");
 }
 
@@ -1335,6 +1413,14 @@ $("#import-students-file").addEventListener("change", async (event) => {
   catch (error) { $("#student-roster-message").textContent = errorMessage(error); showNotice(errorMessage(error), "error"); }
 });
 $("#export-students-btn").addEventListener("click", exportStudentsCsv);
+$("#teacher-template-btn").addEventListener("click", () => downloadTemplate("teachers"));
+$("#student-template-btn").addEventListener("click", () => downloadTemplate("students"));
+$("#legacy-template-btn").addEventListener("click", () => downloadTemplate("legacy"));
+$("#legacy-import-btn").addEventListener("click", () => $("#legacy-import-file").click());
+$("#legacy-import-file").addEventListener("change", (event) => openLegacyImport(event.target.files?.[0]));
+$("#confirm-legacy-btn").addEventListener("click", confirmLegacyImport);
+$("#close-legacy-btn").addEventListener("click", () => $("#legacy-dialog").close());
+$("#cancel-legacy-btn").addEventListener("click", () => $("#legacy-dialog").close());
 $("#add-student-btn").addEventListener("click", () => openStudentDialog());
 $("#student-form").addEventListener("submit", saveStudent);
 $("#close-student-dialog-btn").addEventListener("click", () => $("#student-dialog").close());
@@ -1383,7 +1469,10 @@ $("#teacher-table-body").addEventListener("click", (event) => {
 });
 
 supabase.auth.onAuthStateChange((_event, session) => {
+  updateTopbarAuth(!!session);
+
   // Jadwalkan check agar tidak melakukan operasi jaringan di dalam callback auth.
+  // updateTopbarAuth(!!session);
   if (!session) {
     currentUser = null;
     isPsd = false;

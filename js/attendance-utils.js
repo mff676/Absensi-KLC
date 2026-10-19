@@ -196,6 +196,7 @@ export function attendanceDetailHtml(row, names) {
       <dt>Lokasi masuk</dt><dd>${locationLink(row.clock_in_lat, row.clock_in_lng)}</dd>
       <dt>Lokasi keluar</dt><dd>${locationLink(row.clock_out_lat, row.clock_out_lng)}</dd>
       <dt>Status</dt><dd>${statusBadge(row)}</dd>
+      ${row.is_legacy ? "<dt>Sumber</dt><dd>Impor GForm lama (jam = waktu kirim form, tanpa lokasi)</dd>" : ""}
       ${checkLine("Dicek PJ", row.pj_checked_at)}
       ${checkLine("Dicek PSD", row.psd_checked_at)}
       ${checkLine("Terkirim", row.sent_at)}
@@ -218,6 +219,11 @@ export async function showAttendancePhoto(supabase, path, targetId) {
   const target = document.getElementById(targetId);
   if (!target) return;
   if (!path) { if (target.textContent === "Memuat foto...") target.innerHTML = '<span class="muted">Tidak ada foto.</span>'; return; }
+  // Data impor GForm menyimpan link Google Drive, bukan file di Storage.
+  if (/^https?:\/\//i.test(path)) {
+    target.innerHTML = `<a href="${escapeHtml(path)}" target="_blank" rel="noopener">Buka foto (Google Drive)</a>`;
+    return;
+  }
   const { data, error } = await supabase.storage.from("attendance-photos").createSignedUrl(path, 300);
   if (error || !data?.signedUrl) {
     console.error(error);
@@ -229,4 +235,4 @@ export async function showAttendancePhoto(supabase, path, targetId) {
 }
 
 // Kolom yang dibaca dari tabel attendance untuk rekap PSD, PJ, dan riwayat guru.
-export const ATTENDANCE_COLUMNS = "id, teacher_id, program_id, teaching_date, class_type, subject, method, note, student_count, clock_in_at, clock_out_at, clock_in_photo_path, clock_out_photo_path, clock_in_lat, clock_in_lng, clock_out_lat, clock_out_lng, auto_closed, review_status, review_note, pj_checked_at, psd_checked_at, sent_at, attendance_students(student_id, student_name_snapshot, class_name_snapshot)";
+export const ATTENDANCE_COLUMNS = "id, teacher_id, program_id, teaching_date, class_type, subject, method, note, student_count, clock_in_at, clock_out_at, clock_in_photo_path, clock_out_photo_path, clock_in_lat, clock_in_lng, clock_out_lat, clock_out_lng, auto_closed, is_legacy, review_status, review_note, pj_checked_at, psd_checked_at, sent_at, attendance_students(student_id, student_name_snapshot, class_name_snapshot)";

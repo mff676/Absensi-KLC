@@ -6,6 +6,19 @@ const $ = (s) => document.querySelector(s);
 let user = null, managedPrograms = [], students = [];
 const views = ["#pj-loading", "#pj-login", "#pj-denied", "#pj-app"];
 function view(id) { views.forEach((v) => $(v).classList.add("hidden")); $(id).classList.remove("hidden"); }
+function updateTopbarAuth(isLoggedIn) {
+  const accountArea = document.querySelector(".account-area");
+  const rightSide = document.querySelector(".right-side");
+
+  if (accountArea) {
+    accountArea.classList.toggle("hidden", !isLoggedIn);
+  }
+
+  if (rightSide) {
+    rightSide.classList.toggle("hidden", isLoggedIn);
+  }
+}
+
 function esc(v="") { return String(v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c])); }
 function notice(message, error=false) { const el=$("#pj-notice"); el.textContent=message; el.className=`notice ${error?'notice-error':'notice-success'}`; el.classList.remove("hidden"); }
 function err(e) { console.error(e); return e?.message || "Terjadi kesalahan. Coba lagi."; }
@@ -15,9 +28,28 @@ async function boot() {
   view("#pj-loading");
   const {data:{session},error}=await supabase.auth.getSession(); if(error) throw error;
   user=session?.user||null;
+  updateTopbarAuth(!!user)
   if(!user) { view("#pj-login"); return; }
-  $("#pj-user-email").textContent=user.email||""; $("#pj-sign-out").classList.remove("hidden");
-  const {data:managers,error:managerError}=await supabase.from("program_managers").select("program_id, programs(id, code, name, is_active)").eq("profile_id",user.id).eq("is_active",true);
+const { data: managers, error: managerError } = await supabase
+  .from("program_managers")
+  .select("program_id, programs(id, code, name, is_active)")
+  .eq("profile_id", user.id)
+  .eq("is_active", true);
+
+const { data: profile, error: profileError } = await supabase
+  .from("profiles")
+  .select("full_name")
+  .eq("id", user.id)
+  .maybeSingle();
+
+if (profileError) {
+  console.error("Gagal mengambil username:", profileError);
+}
+
+$("#pj-user-email").textContent =
+  profile?.full_name || user.email || "";
+
+$("#pj-sign-out").classList.remove("hidden");
   if(managerError) throw managerError;
   managedPrograms=(managers||[]).map(x=>x.programs).filter(p=>p&&p.is_active);
   if(!managedPrograms.length) { view("#pj-denied"); return; }
@@ -180,5 +212,5 @@ $("#pj-reject-btn").addEventListener("click", () => submitPjReview("reject"));
 $("#pj-close-detail").addEventListener("click", () => $("#pj-detail-dialog").close());
 $("#pj-close-detail-bottom").addEventListener("click", () => $("#pj-detail-dialog").close());
 
-supabase.auth.onAuthStateChange((_event,session)=>{if(!session){view("#pj-login");$("#pj-sign-out").classList.add("hidden");}});
+supabase.auth.onAuthStateChange((_event,session)=>{  updateTopbarAuth(!!session?.user);if(!session){view("#pj-login");$("#pj-sign-out").classList.add("hidden");}});
 (async()=>{if(SUPABASE_URL.includes("YOUR_PROJECT")||SUPABASE_PUBLISHABLE_KEY.includes("YOUR_SUPABASE")){view("#pj-login");$("#pj-login-message").textContent="Isi konfigurasi Supabase di js/config.js terlebih dahulu.";return;}try{await boot();}catch(e){view("#pj-login");$("#pj-login-message").textContent=err(e);}})();

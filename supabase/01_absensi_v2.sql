@@ -17,6 +17,24 @@
 
 begin;
 
+-- Hapus versi lama fungsi dengan nama yang sama (jika ada dari migration sebelumnya).
+-- Perlu karena Postgres tidak bisa mengganti tipe hasil lewat CREATE OR REPLACE.
+-- Tidak ada frontend yang memakai versi lama fungsi-fungsi ini.
+do $$
+declare f record;
+begin
+  for f in
+    select p.oid::regprocedure as sig
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public'
+      and p.proname in ('klc_current_teacher_id', 'klc_fix_deadline', 'klc_check_students', 'auto_close_attendance',
+                        'clock_in_v2', 'clock_out_v2', 'review_attendance', 'fix_rejected_attendance',
+                        'mark_attendance_sent', 'get_my_program_teacher_names')
+  loop
+    execute format('drop function %s', f.sig);
+  end loop;
+end $$;
+
 -- ---------------------------------------------------------------------
 -- 1. Kolom baru
 -- ---------------------------------------------------------------------
@@ -63,6 +81,13 @@ end $$;
 alter table public.attendance
   add constraint attendance_review_status_check
   check (review_status in ('pending', 'pj_approved', 'approved', 'rejected', 'sent'));
+
+-- class_type diisi kode program (reguler/privat/utbk). Constraint lama memakai ejaan
+-- Inggris (regular/private), jadi disesuaikan. Nilai lama tetap diizinkan untuk data lama.
+alter table public.attendance drop constraint if exists attendance_class_type_check;
+alter table public.attendance
+  add constraint attendance_class_type_check
+  check (class_type in ('reguler', 'privat', 'utbk', 'regular', 'private'));
 
 -- Tanggal mengajar memakai tanggal WIB, bukan UTC.
 alter table public.attendance
@@ -213,7 +238,6 @@ begin
   return v_id;
 end $$;
 
-drop function if exists public.clock_out_v2(uuid, text, double precision, double precision, text);
 create or replace function public.clock_out_v2(
   p_attendance_id uuid,
   p_photo_path    text,
