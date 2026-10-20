@@ -193,6 +193,8 @@
 </span><span>Data Siswa</span></button>
           <button class="sidebar-link" type="button" data-psd-section="attendance"><span
               class="nav-icon">◷</span><span>Rekap Absensi</span></button>
+          <button class="sidebar-link" type="button" data-psd-section="managers"><span
+              class="nav-icon"><i class="fa-solid fa-user-shield"></i></span><span>Penugasan PJ</span></button>
         </nav>
         <div class="sidebar-foot"><span class="sidebar-dot"></span> Akses PSD aktif</div>
       </aside>
@@ -459,6 +461,30 @@
               <button id="legacy-template-btn" class="button button-secondary" type="button">↓ Format absen lama</button>
               <button id="legacy-import-btn" class="button button-primary" type="button">↑ Impor absen lama</button>
               <input id="legacy-import-file" type="file" accept=".csv,.tsv,.txt,text/csv" class="hidden">
+            </div>
+          </section>
+        </section>
+        <section id="psd-managers-section" class="psd-section hidden">
+          <div class="page-heading">
+            <div><p class="eyebrow">PENGELOLAAN PSD</p><h2>Penugasan PJ</h2><p class="muted">Maksimal 2 PJ aktif per program, dan satu orang hanya memegang 1 program.</p></div>
+            <div class="heading-actions"><button id="reload-managers-btn" class="button button-secondary" type="button">↻ Muat ulang</button></div>
+          </div>
+          <section class="panel manager-form-panel">
+            <form id="manager-form" class="manager-form" novalidate>
+              <label class="form-field"><span>Program <span class="required">*</span></span><select id="manager-program" required></select></label>
+              <label class="form-field"><span>Email Google calon PJ <span class="required">*</span></span><input id="manager-email" type="email" list="manager-email-options" maxlength="254" autocomplete="off" placeholder="nama@gmail.com"><datalist id="manager-email-options"></datalist></label>
+              <label class="form-field"><span>Nama (opsional)</span><input id="manager-name" type="text" maxlength="120" placeholder="Diisi jika PJ bukan pengajar"></label>
+              <button id="save-manager-btn" class="button button-primary" type="submit">Tetapkan PJ</button>
+            </form>
+            <p class="form-hint">Calon PJ harus sudah pernah login sekali dengan Google (di halaman PJ). Jika belum, minta ia membuka halaman PJ, login, lalu tetapkan di sini. PJ yang juga mengajar tetap bisa absen seperti biasa.</p>
+            <p id="manager-message" class="message" role="status"></p>
+          </section>
+          <section class="panel directory-panel">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Program</th><th>Nama</th><th>Email</th><th>Peran</th><th>Status</th><th><span class="sr-only">Aksi</span></th></tr></thead>
+                <tbody id="manager-table-body"><tr><td colspan="6" class="empty-cell">Buka menu ini untuk memuat data.</td></tr></tbody>
+              </table>
             </div>
           </section>
         </section>

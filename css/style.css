@@ -284,7 +284,7 @@ tbody tr:hover { background: #fbfdfc; }
 .recap-student-list li { padding: 5px 0; }
 .recap-photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .recap-photo { display: block; width: 100%; max-height: 220px; margin-top: 6px; object-fit: cover; border: 1px solid var(--line); border-radius: 10px; }
-@media (max-width: 700px) { .sidebar-nav { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 700px) { .sidebar-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 /* Agar label .sr-only di header tabel tidak membuat halaman bisa digeser ke samping di HP */
 .table-wrap { position: relative; }
 
@@ -316,3 +316,12 @@ tbody tr:hover { background: #fbfdfc; }
 .legacy-list { margin: 0 0 14px; padding-left: 18px; font-size: 13px; max-height: 240px; overflow-y: auto; }
 .legacy-list li { padding: 3px 0; }
 @media (max-width: 760px) { .legacy-panel { flex-direction: column; align-items: stretch; } }
+
+/* Penugasan PJ */
+.manager-form-panel { padding: 20px; margin-bottom: 18px; }
+.manager-form { display: grid; grid-template-columns: 1fr 1.4fr 1.2fr auto; gap: 12px; align-items: end; }
+.manager-form .form-field { margin-bottom: 0; }
+.manager-form .button { height: 43px; }
+.manager-form-panel .form-hint { margin: 12px 0 0; }
+@media (max-width: 900px) { .manager-form { grid-template-columns: 1fr; } }
+#reload-managers-btn { white-space: nowrap; }

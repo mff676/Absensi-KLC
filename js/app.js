@@ -119,7 +119,7 @@ function renderOverview() {
 }
 
 function switchPsdSection(sectionName) {
-  const sections = { overview: "psd-overview-section", teachers: "psd-teachers-section", students: "psd-students-section", attendance: "psd-attendance-section" };
+  const sections = { overview: "psd-overview-section", teachers: "psd-teachers-section", students: "psd-students-section", attendance: "psd-attendance-section", managers: "psd-managers-section" };
   Object.entries(sections).forEach(([key, id]) => document.getElementById(id)?.classList.toggle("hidden", key !== sectionName));
   document.querySelectorAll("[data-psd-section]").forEach((button) => {
     const active = button.dataset.psdSection === sectionName;
@@ -128,6 +128,7 @@ function switchPsdSection(sectionName) {
   });
   // Rekap baru dimuat saat menu pertama kali dibuka, agar dashboard awal tetap ringan.
   if (sectionName === "attendance" && !recapLoaded) loadAttendanceRecap();
+  if (sectionName === "managers") loadProgramManagers();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -1262,6 +1263,87 @@ async function confirmLegacyImport() {
   }
 }
 
+/* ===== Penugasan PJ (PSD) ===== */
+// Semua perubahan lewat RPC khusus PSD, karena email akun ada di auth.users yang tidak bisa dibaca frontend.
+
+let managerRows = [];
+
+function fillManagerForm() {
+  const select = $("#manager-program");
+  const current = select.value;
+  select.innerHTML = '<option value="">Pilih program...</option>' + programRows
+    .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join("");
+  select.value = programRows.some((p) => p.id === current) ? current : "";
+  // Saran email dari Data Pengajar (PJ sering juga pengajar).
+  $("#manager-email-options").innerHTML = teacherRows.filter((t) => t.login_email)
+    .map((t) => `<option value="${escapeHtml(t.login_email)}">${escapeHtml(t.full_name)}</option>`).join("");
+}
+
+async function loadProgramManagers() {
+  if (!isPsd) return;
+  fillManagerForm();
+  const body = $("#manager-table-body");
+  body.innerHTML = '<tr><td colspan="6" class="empty-cell">Memuat penugasan PJ...</td></tr>';
+  const { data, error } = await supabase.rpc("psd_list_program_managers");
+  if (error) {
+    body.innerHTML = `<tr><td colspan="6" class="empty-cell">Gagal memuat: ${escapeHtml(errorMessage(error))}</td></tr>`;
+    return;
+  }
+  managerRows = data || [];
+  body.innerHTML = managerRows.length ? managerRows.map((m) => `
+    <tr>
+      <td>${escapeHtml(m.program_name)}</td>
+      <td><span class="teacher-name">${escapeHtml(m.full_name || "-")}</span></td>
+      <td>${escapeHtml(m.email || "-")}</td>
+      <td>${m.role === "teacher" ? "PJ + Pengajar" : "PJ"}</td>
+      <td>${m.is_active ? '<span class="badge badge-active">Aktif</span>' : '<span class="badge badge-inactive">Nonaktif</span>'}</td>
+      <td><button class="row-action" type="button" data-manager-id="${escapeHtml(m.id)}" data-manager-active="${m.is_active ? "false" : "true"}">${m.is_active ? "Nonaktifkan" : "Aktifkan"}</button></td>
+    </tr>`).join("")
+    : '<tr><td colspan="6" class="empty-cell">Belum ada PJ yang ditugaskan.</td></tr>';
+}
+
+async function saveProgramManager(event) {
+  event.preventDefault();
+  const message = $("#manager-message");
+  const programId = $("#manager-program").value;
+  const email = $("#manager-email").value.trim().toLowerCase();
+  if (!programId) { message.textContent = "Pilih program terlebih dahulu."; return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { message.textContent = "Masukkan email Google yang valid."; return; }
+  const programName = programRows.find((p) => p.id === programId)?.name || "program ini";
+  // Aturan maks 2 PJ per program & 1 orang 1 program dicek di Supabase; pesan errornya tampil di bawah form.
+  const button = $("#save-manager-btn");
+  button.disabled = true;
+  message.textContent = "";
+  try {
+    const { error } = await supabase.rpc("psd_assign_program_manager", {
+      p_program_id: programId,
+      p_email: email,
+      p_full_name: $("#manager-name").value.trim() || null
+    });
+    if (error) throw error;
+    $("#manager-form").reset();
+    showNotice(`${email} sekarang menjadi PJ ${programName}.`);
+    await loadProgramManagers();
+  } catch (error) {
+    message.textContent = errorMessage(error);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function toggleProgramManager(id, active) {
+  const row = managerRows.find((m) => m.id === id);
+  if (!row) return;
+  const text = active
+    ? `Aktifkan ${row.full_name || row.email} sebagai PJ ${row.program_name}?`
+    : `Nonaktifkan ${row.full_name || row.email} sebagai PJ ${row.program_name}?`;
+  if (!window.confirm(text)) return;
+  const { error } = await supabase.rpc("psd_set_program_manager_active", { p_id: id, p_active: active });
+  if (error) { showNotice(errorMessage(error), "error"); return; }
+  showNotice(active ? "PJ diaktifkan." : "PJ dinonaktifkan.");
+  await loadProgramManagers();
+}
+
 function exportStudentsCsv() {
   if (!isPsd) { showNotice("Ekspor daftar adik hanya tersedia untuk PSDM.", "error"); return; }
   const csvCell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
@@ -1413,6 +1495,12 @@ $("#import-students-file").addEventListener("change", async (event) => {
   catch (error) { $("#student-roster-message").textContent = errorMessage(error); showNotice(errorMessage(error), "error"); }
 });
 $("#export-students-btn").addEventListener("click", exportStudentsCsv);
+$("#manager-form").addEventListener("submit", saveProgramManager);
+$("#reload-managers-btn").addEventListener("click", loadProgramManagers);
+$("#manager-table-body").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-manager-id]");
+  if (button) toggleProgramManager(button.dataset.managerId, button.dataset.managerActive === "true");
+});
 $("#teacher-template-btn").addEventListener("click", () => downloadTemplate("teachers"));
 $("#student-template-btn").addEventListener("click", () => downloadTemplate("students"));
 $("#legacy-template-btn").addEventListener("click", () => downloadTemplate("legacy"));
