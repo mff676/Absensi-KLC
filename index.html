@@ -109,6 +109,11 @@
                 <option value="cancel">Cancel class</option>
               </select>
             </label>
+            <label id="attendance-special-rate-wrap" class="form-field hidden">
+              <span>Tarif khusus (opsional)</span>
+              <select id="attendance-special-rate"><option value="">Tidak ada — tarif standar</option></select>
+              <span class="form-hint">Pilih hanya jika sesi ini memang memakai tarif khusus, misalnya datang ke rumah adik. PJ akan memeriksanya.</span>
+            </label>
             <div id="student-select-wrap" class="form-field hidden">
               <label for="attendance-students">Nama adik yang diajar <span class="required">*</span></label>
               <select id="attendance-students" multiple size="6" aria-describedby="student-select-hint"></select>
@@ -147,10 +152,11 @@
               type="month"></label>
             </div>
             <div id="history-rejected-banner" class="notice notice-error hidden" role="status"></div>
+            <div id="history-payroll" class="history-payroll"></div>
             <div class="stats-grid history-stats">
               <article class="stat-card"><span class="stat-label">Sesi bulan ini</span><strong id="history-total"
                 class="stat-value">0</strong></article>
-                <article class="stat-card"><span class="stat-label">Disetujui / terkirim</span><strong id="history-approved"
+                <article class="stat-card"><span class="stat-label">Disetujui / dibayar</span><strong id="history-approved"
               class="stat-value">0</strong></article>
               <article class="stat-card"><span class="stat-label">Ditolak</span><strong id="history-rejected"
                 class="stat-value">0</strong></article>
@@ -195,6 +201,10 @@
               class="nav-icon">◷</span><span>Rekap Absensi</span></button>
           <button class="sidebar-link" type="button" data-psd-section="managers"><span
               class="nav-icon"><i class="fa-solid fa-user-shield"></i></span><span>Penugasan PJ</span></button>
+          <button class="sidebar-link" type="button" data-psd-section="payroll"><span
+              class="nav-icon"><i class="fa-solid fa-money-bill-wave"></i></span><span>Rekap Gaji</span></button>
+          <button class="sidebar-link" type="button" data-psd-section="fees"><span
+              class="nav-icon"><i class="fa-solid fa-tags"></i></span><span>Tarif Fee</span></button>
         </nav>
         <div class="sidebar-foot"><span class="sidebar-dot"></span> Akses PSD aktif</div>
       </aside>
@@ -386,9 +396,6 @@
             <div class="heading-actions">
               <button id="reload-recap-btn" class="button button-secondary" type="button">↻ Muat ulang</button>
               <button id="export-view-btn" class="button button-secondary" type="button">↓ Ekspor tabel</button>
-              <button id="export-ready-btn" class="button button-primary" type="button">↓ Ekspor siap kirim</button>
-              <button id="mark-sent-btn" class="button button-primary hidden" type="button">✓ Tandai sudah
-                dikirim</button>
             </div>
           </div>
           <section class="stats-grid" aria-label="Ringkasan absensi">
@@ -412,10 +419,10 @@
                   <option value="all">Semua status</option>
                   <option value="running">Berjalan</option>
                   <option value="pending">Menunggu PJ</option>
-                  <option value="pj_approved">Menunggu PSD</option>
-                  <option value="approved">Disetujui</option>
+                  <option value="pj_approved">Disetujui PJ</option>
+                  <option value="approved">Disetujui (data lama)</option>
                   <option value="rejected">Ditolak</option>
-                  <option value="sent">Terkirim</option>
+                  <option value="sent">Dibayar</option>
                 </select></label>
               <label class="search-field"><span class="filter-caption">Nama pengajar</span><span class="search-icon"
                   aria-hidden="true">⌕</span><input id="recap-teacher-search" type="search"
@@ -423,8 +430,7 @@
             </div>
             <div class="table-meta">
               <p id="recap-result-count">Belum dimuat.</p>
-              <p class="muted">"Ekspor siap kirim" berisi semua sesi Disetujui dari bulan mana pun, tanpa mengikuti
-                filter.</p>
+              <p class="muted">Pembayaran diproses di menu Rekap Gaji.</p>
             </div>
             <div class="table-wrap">
               <table>
@@ -488,6 +494,44 @@
             </div>
           </section>
         </section>
+
+        <section id="psd-payroll-section" class="psd-section hidden">
+          <div class="page-heading">
+            <div><p class="eyebrow">PENGELOLAAN PSD</p><h2>Rekap Gaji</h2><p class="muted">Rekap per guru per bulan. PJ meng-ACC tiap program, lalu PSD menyetujui totalnya.</p></div>
+            <div class="heading-actions">
+              <label class="filter-field"><span class="filter-caption">Bulan</span><input id="payroll-month" type="month"></label>
+              <button id="payroll-export-btn" class="button button-secondary" type="button">↓ Ekspor bendahara</button>
+            </div>
+          </div>
+          <section class="panel directory-panel">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Pengajar</th><th>Program</th><th>Penyesuaian</th><th>Total</th><th>Status</th><th><span class="sr-only">Aksi</span></th></tr></thead>
+                <tbody id="payroll-table-body"><tr><td colspan="6" class="empty-cell">Buka menu ini untuk memuat rekap.</td></tr></tbody>
+              </table>
+            </div>
+          </section>
+          <p class="privacy-note">Ekspor bendahara menghasilkan 2 file CSV: total per guru (beserta rekening) dan rincian per sesi, hanya untuk rekap yang sudah disetujui PSD.</p>
+        </section>
+
+        <section id="psd-fees-section" class="psd-section hidden">
+          <div class="page-heading">
+            <div><p class="eyebrow">PENGELOLAAN PSD</p><h2>Tarif Fee</h2><p class="muted">Reguler dan UTBK per jumlah adik, Privat per pertemuan. Perubahan tarif tidak mengubah rekap yang sudah disetujui.</p></div>
+          </div>
+          <div id="fee-rate-tables"></div>
+          <section class="panel fee-panel">
+            <h3>Tarif khusus</h3>
+            <p class="form-hint">Nominal tetap per pertemuan. Dipilih guru saat absen, diperiksa PJ program tersebut.</p>
+            <form id="special-rate-form" class="manager-form" novalidate>
+              <label class="form-field"><span>Program</span><select id="special-rate-program"></select></label>
+              <label class="form-field"><span>Nama tarif</span><input id="special-rate-name" type="text" maxlength="100" placeholder="Contoh: Privat datang ke rumah"></label>
+              <label class="form-field"><span>Nominal per pertemuan (Rp)</span><input id="special-rate-amount" type="number" min="0" step="1000"></label>
+              <button class="button button-primary" type="submit">Tambah</button>
+            </form>
+            <p id="special-rate-message" class="message" role="status"></p>
+            <div class="table-wrap"><table><thead><tr><th>Program</th><th>Nama</th><th>Nominal</th><th>Status</th><th><span class="sr-only">Aksi</span></th></tr></thead><tbody id="special-rate-table"></tbody></table></div>
+          </section>
+        </section>
       </div>
     </section>
   </main>
@@ -520,7 +564,7 @@
       </div>
       <div id="attendance-detail-content"></div>
       <div id="review-box" class="review-box hidden">
-        <div class="form-section-title">Keputusan PSD</div>
+        <div class="form-section-title">Keputusan (PSD bertindak sebagai PJ)</div>
         <label class="form-field"><span>Catatan penolakan (wajib jika menolak)</span><textarea id="review-note" rows="2"
             maxlength="500" placeholder="Contoh: program salah, seharusnya Privat"></textarea></label>
         <p id="review-message" class="message" role="status"></p>
@@ -531,6 +575,21 @@
       </div>
       <div class="dialog-actions"><button id="close-attendance-detail-bottom" class="button button-ghost"
           type="button">Tutup</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="payroll-dialog" class="form-dialog payroll-dialog">
+    <form method="dialog">
+      <div class="dialog-heading">
+        <div><p class="eyebrow">REKAP GAJI</p><h2 id="payroll-dialog-title">Rincian</h2></div>
+        <button id="close-payroll-btn" class="icon-button" type="button" aria-label="Tutup">×</button>
+      </div>
+      <div id="payroll-dialog-content"></div>
+      <p id="payroll-message" class="message" role="status"></p>
+      <div class="dialog-actions">
+        <button id="payroll-paid-btn" class="button button-secondary hidden" type="button">✓ Tandai sudah dibayar</button>
+        <button id="payroll-approve-btn" class="button button-primary hidden" type="button">Setujui rekap gaji</button>
+      </div>
     </form>
   </dialog>
 
@@ -552,6 +611,7 @@
           required></select></label>
       <label class="form-field"><span>Metode <span class="required">*</span></span><select id="fix-method"
           required></select></label>
+      <label class="form-field"><span>Tarif khusus (opsional)</span><select id="fix-special-rate"></select></label>
       <div class="form-field">
         <label for="fix-students">Adik yang hadir <span class="required">*</span></label>
         <select id="fix-students" multiple size="6"></select>

@@ -2,7 +2,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "./config.js";
 import {
   SUBJECTS_BY_PROGRAM, METHOD_LABELS, STATUS_LABELS, ATTENDANCE_COLUMNS, statusKey, statusBadge, formatDate, formatTime,
-  formatDateTime, mapsUrl, fixDeadline, getLocation, stampPhoto, watermarkLines, downloadCsv, attendanceDetailHtml, showAttendancePhoto
+  formatDateTime, mapsUrl, fixDeadline, getLocation, stampPhoto, watermarkLines, downloadCsv, attendanceDetailHtml, showAttendancePhoto,
+  formatRupiah, monthToPeriod, previousMonthValue, formatMonth
 } from "./attendance-utils.js";
 import { LEGACY_HEADERS, prepareLegacyRows } from "./legacy-import.js";
 
@@ -119,7 +120,7 @@ function renderOverview() {
 }
 
 function switchPsdSection(sectionName) {
-  const sections = { overview: "psd-overview-section", teachers: "psd-teachers-section", students: "psd-students-section", attendance: "psd-attendance-section", managers: "psd-managers-section" };
+  const sections = { overview: "psd-overview-section", teachers: "psd-teachers-section", students: "psd-students-section", attendance: "psd-attendance-section", managers: "psd-managers-section", payroll: "psd-payroll-section", fees: "psd-fees-section" };
   Object.entries(sections).forEach(([key, id]) => document.getElementById(id)?.classList.toggle("hidden", key !== sectionName));
   document.querySelectorAll("[data-psd-section]").forEach((button) => {
     const active = button.dataset.psdSection === sectionName;
@@ -129,6 +130,8 @@ function switchPsdSection(sectionName) {
   // Rekap baru dimuat saat menu pertama kali dibuka, agar dashboard awal tetap ringan.
   if (sectionName === "attendance" && !recapLoaded) loadAttendanceRecap();
   if (sectionName === "managers") loadProgramManagers();
+  if (sectionName === "payroll") loadPayroll();
+  if (sectionName === "fees") loadFees();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -256,7 +259,7 @@ function openAttendanceDetail(attendanceId) {
   if (!row) return;
   detailAttendanceId = row.id;
   $("#attendance-detail-title").textContent = `${recapTeacherName(row)} · ${formatDate(row.teaching_date)}`;
-  $("#attendance-detail-content").innerHTML = attendanceDetailHtml(row, { program: recapProgramName(row) });
+  $("#attendance-detail-content").innerHTML = attendanceDetailHtml(row, { program: recapProgramName(row), specialRate: specialRates.find((r) => r.id === row.special_rate_id)?.name });
   // PSD bisa memutuskan selama sesi sudah selesai dan belum terkirim.
   const canReview = Boolean(row.clock_out_at) && row.review_status !== "sent";
   $("#review-box").classList.toggle("hidden", !canReview);
@@ -312,58 +315,6 @@ function exportRows(rows) {
     ];
   });
   return [header, ...body];
-}
-
-// Id sesi yang terakhir diekspor sebagai "siap kirim"; hanya sesi ini yang ditandai terkirim.
-let lastReadyExportIds = [];
-
-async function exportReadyToSend() {
-  if (!isPsd) return;
-  const button = $("#export-ready-btn");
-  button.disabled = true;
-  try {
-    // Semua sesi Disetujui dari bulan mana pun, agar sesi susulan tidak terlewat.
-    const { data, error } = await supabase
-      .from("attendance")
-      .select(ATTENDANCE_COLUMNS)
-      .eq("review_status", "approved")
-      .order("teaching_date", { ascending: true })
-      .order("clock_in_at", { ascending: true });
-    if (error) throw error;
-    if (!data?.length) {
-      showNotice("Belum ada sesi berstatus Disetujui yang perlu dikirim.", "error");
-      return;
-    }
-    downloadCsv(`rekap-bendahara-klc-${toLocalDateString(new Date())}.csv`, exportRows(data));
-    lastReadyExportIds = data.map((row) => row.id);
-    $("#mark-sent-btn").classList.remove("hidden");
-    $("#mark-sent-btn").textContent = `✓ Tandai ${data.length} sesi sudah dikirim`;
-    showNotice(`File berisi ${data.length} sesi siap kirim. Periksa filenya, lalu tekan "Tandai sudah dikirim".`);
-  } catch (error) {
-    showNotice(errorMessage(error), "error");
-  } finally {
-    button.disabled = false;
-  }
-}
-
-async function markExportedAsSent() {
-  if (!lastReadyExportIds.length) return;
-  const ok = window.confirm(`Tandai ${lastReadyExportIds.length} sesi sebagai sudah dikirim ke bendahara? Sesi yang terkirim tidak bisa diubah lagi.`);
-  if (!ok) return;
-  const button = $("#mark-sent-btn");
-  button.disabled = true;
-  try {
-    const { data, error } = await supabase.rpc("mark_attendance_sent", { p_attendance_ids: lastReadyExportIds });
-    if (error) throw error;
-    lastReadyExportIds = [];
-    button.classList.add("hidden");
-    showNotice(`${data} sesi ditandai terkirim.`);
-    await loadAttendanceRecap();
-  } catch (error) {
-    showNotice(errorMessage(error), "error");
-  } finally {
-    button.disabled = false;
-  }
 }
 
 function exportCurrentView() {
@@ -493,6 +444,7 @@ async function loadTeachers() {
   const studentsResult = await supabase.from("students").select("id, class_name, full_name, program_id, is_active, created_at").order("class_name").order("full_name");
   if (studentsResult.error) throw studentsResult.error;
   studentRows = studentsResult.data || [];
+  await loadSpecialRates();
   renderTeachers();
   renderStudentRoster();
   renderOverview();
@@ -548,6 +500,9 @@ async function updateAttendanceForm() {
   const wrap = $("#student-select-wrap");
   const select = $("#attendance-students");
   fillSubjectSelect($("#attendance-subject"), program?.code);
+  // Tarif khusus hanya ditampilkan jika program ini punya tarif khusus aktif.
+  const rateCount = program ? fillSpecialRateSelect($("#attendance-special-rate"), program.id) : 0;
+  $("#attendance-special-rate-wrap").classList.toggle("hidden", !rateCount);
   wrap.classList.toggle("hidden", !program);
   select.required = Boolean(program);
   select.innerHTML = '<option value="">Pilih program terlebih dahulu...</option>';
@@ -587,6 +542,7 @@ async function loadTeacherAttendance() {
   const { data: contextRows, error: contextError } = await supabase.rpc("get_my_teacher_attendance_context");
   if (contextError) throw contextError;
   if (!contextRows?.length) throw new Error("Data pengajar belum terhubung atau tidak aktif. Hubungi PSD.");
+  await loadSpecialRates();
   const firstContext = contextRows[0];
   teacherRecord = { id: firstContext.teacher_id, full_name: firstContext.teacher_name };
   assignedPrograms = contextRows
@@ -709,7 +665,8 @@ async function submitClockIn(event) {
       p_photo_path: photoPath,
       p_lat: location.lat,
       p_lng: location.lng,
-      p_note: note || null
+      p_note: note || null,
+      p_special_rate_id: $("#attendance-special-rate").value || null
     });
     if (error) throw error;
     $("#clock-in-form").reset();
@@ -790,6 +747,7 @@ async function loadTeacherHistory() {
     historyRows = data || [];
     renderTeacherHistory();
     await updateRejectedBanner();
+    await loadTeacherPayroll();
   } catch (error) {
     body.innerHTML = `<tr><td colspan="8" class="empty-cell">Gagal memuat riwayat: ${escapeHtml(errorMessage(error))}</td></tr>`;
   }
@@ -804,7 +762,7 @@ function historyProgramName(row) {
 }
 
 function renderTeacherHistory() {
-  const done = historyRows.filter((r) => ["approved", "sent"].includes(r.review_status)).length;
+  const done = historyRows.filter((r) => ["pj_approved", "approved", "sent"].includes(r.review_status)).length;
   $("#history-total").textContent = String(historyRows.length);
   $("#history-approved").textContent = String(done);
   $("#history-rejected").textContent = String(historyRows.filter((r) => r.review_status === "rejected").length);
@@ -876,6 +834,7 @@ async function openFixDialog(attendanceId) {
   $("#fix-message").textContent = "";
   const program = assignedPrograms.find((p) => p.id === $("#fix-program").value);
   fillSubjectSelect($("#fix-subject"), program?.code, fixRow.subject);
+  fillSpecialRateSelect($("#fix-special-rate"), $("#fix-program").value, fixRow.special_rate_id || "");
   $("#fix-dialog").showModal();
   await loadFixStudents($("#fix-program").value, (fixRow.attendance_students || []).map((s) => s.student_id));
 }
@@ -883,6 +842,7 @@ async function openFixDialog(attendanceId) {
 async function changeFixProgram() {
   const program = assignedPrograms.find((p) => p.id === $("#fix-program").value);
   fillSubjectSelect($("#fix-subject"), program?.code, $("#fix-subject").value);
+  fillSpecialRateSelect($("#fix-special-rate"), $("#fix-program").value);
   await loadFixStudents($("#fix-program").value, []);
 }
 
@@ -924,7 +884,8 @@ async function submitFix(event) {
       p_student_ids: studentIds,
       p_note: note || null,
       p_clock_in_photo_path: inPath,
-      p_clock_out_photo_path: outPath
+      p_clock_out_photo_path: outPath,
+      p_special_rate_id: $("#fix-special-rate").value || null
     });
     if (error) throw error;
     $("#fix-dialog").close();
@@ -1344,6 +1305,375 @@ async function toggleProgramManager(id, active) {
   await loadProgramManagers();
 }
 
+/* ===== Tarif Fee (PSD) ===== */
+// Reguler/UTBK: tarif per metode x jumlah adik (1-6). Privat: per metode, student_count = 0.
+
+let feeRates = [];       // baris tabel fee_rates
+let specialRates = [];   // baris tabel special_rates (juga dipakai guru & detail sesi)
+const FEE_METHODS = ["offline", "online", "cancel"];
+
+const isPrivat = (program) => ["privat", "private"].includes(program?.code);
+
+async function loadSpecialRates() {
+  const { data, error } = await supabase.from("special_rates").select("id, program_id, name, amount, is_active").order("name");
+  if (error) throw error;
+  specialRates = data || [];
+}
+
+async function loadFees() {
+  if (!isPsd) return;
+  const box = $("#fee-rate-tables");
+  box.innerHTML = '<p class="muted">Memuat tarif...</p>';
+  try {
+    const { data, error } = await supabase.from("fee_rates").select("id, program_id, method, student_count, amount");
+    if (error) throw error;
+    feeRates = data || [];
+    await loadSpecialRates();
+    renderFeeTables();
+    renderSpecialRates();
+  } catch (error) {
+    box.innerHTML = `<p class="message">${escapeHtml(errorMessage(error))}</p>`;
+  }
+}
+
+function feeValue(programId, method, count) {
+  return feeRates.find((r) => r.program_id === programId && r.method === method && r.student_count === count)?.amount ?? "";
+}
+
+function renderFeeTables() {
+  $("#fee-rate-tables").innerHTML = programRows.map((program) => {
+    const counts = isPrivat(program) ? [0] : [1, 2, 3, 4, 5, 6];
+    const rows = counts.map((count) => `
+      <tr>
+        <td>${count === 0 ? "Per pertemuan" : `${count} adik`}</td>
+        ${FEE_METHODS.map((m) => `<td><input class="fee-input" type="number" min="0" step="1000" inputmode="numeric"
+          data-program="${escapeHtml(program.id)}" data-method="${m}" data-count="${count}" value="${escapeHtml(feeValue(program.id, m, count))}"></td>`).join("")}
+      </tr>`).join("");
+    return `
+      <section class="panel fee-panel">
+        <div class="fee-panel-heading"><h3>${escapeHtml(program.name)}</h3>
+          <button class="button button-primary" type="button" data-save-fee="${escapeHtml(program.id)}">Simpan tarif ${escapeHtml(program.name)}</button></div>
+        <div class="table-wrap"><table class="fee-table">
+          <thead><tr><th>${isPrivat(program) ? "Dasar" : "Jumlah adik"}</th><th>Offline (Rp)</th><th>Online (Rp)</th><th>Cancel class (Rp)</th></tr></thead>
+          <tbody>${rows}</tbody></table></div>
+        <p class="message" data-fee-message="${escapeHtml(program.id)}"></p>
+      </section>`;
+  }).join("") || '<p class="muted">Belum ada program aktif.</p>';
+}
+
+async function saveFeeRates(programId) {
+  const message = document.querySelector(`[data-fee-message="${programId}"]`);
+  const inputs = Array.from(document.querySelectorAll(`.fee-input[data-program="${programId}"]`));
+  const rows = [];
+  const emptyIds = [];
+  for (const input of inputs) {
+    const count = Number(input.dataset.count);
+    const existing = feeRates.find((r) => r.program_id === programId && r.method === input.dataset.method && r.student_count === count);
+    if (input.value === "") { if (existing) emptyIds.push(existing.id); continue; }
+    const amount = Number(input.value);
+    if (!Number.isInteger(amount) || amount < 0) { message.textContent = "Nominal harus angka bulat dan tidak negatif."; return; }
+    rows.push({ program_id: programId, method: input.dataset.method, student_count: count, amount, updated_at: new Date().toISOString(), updated_by: currentUser.id });
+  }
+  message.textContent = "Menyimpan...";
+  try {
+    if (rows.length) {
+      const { error } = await supabase.from("fee_rates").upsert(rows, { onConflict: "program_id,method,student_count" });
+      if (error) throw error;
+    }
+    // Kolom yang dikosongkan = tarif dihapus (sesi tanpa tarif akan ditandai saat rekap).
+    if (emptyIds.length) {
+      const { error } = await supabase.from("fee_rates").delete().in("id", emptyIds);
+      if (error) throw error;
+    }
+    message.textContent = "";
+    showNotice("Tarif tersimpan. Rekap yang sudah disetujui tidak berubah.");
+    await loadFees();
+  } catch (error) {
+    message.textContent = errorMessage(error);
+  }
+}
+
+function renderSpecialRates() {
+  $("#special-rate-program").innerHTML = programRows.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join("");
+  $("#special-rate-table").innerHTML = specialRates.length ? specialRates.map((r) => `
+    <tr>
+      <td>${escapeHtml(programRows.find((p) => p.id === r.program_id)?.name || "-")}</td>
+      <td>${escapeHtml(r.name)}</td>
+      <td>${escapeHtml(formatRupiah(r.amount))}</td>
+      <td>${r.is_active ? '<span class="badge badge-active">Aktif</span>' : '<span class="badge badge-inactive">Nonaktif</span>'}</td>
+      <td><button class="row-action" type="button" data-special-id="${escapeHtml(r.id)}" data-special-active="${r.is_active ? "false" : "true"}">${r.is_active ? "Nonaktifkan" : "Aktifkan"}</button></td>
+    </tr>`).join("") : '<tr><td colspan="5" class="empty-cell">Belum ada tarif khusus.</td></tr>';
+}
+
+async function addSpecialRate(event) {
+  event.preventDefault();
+  const message = $("#special-rate-message");
+  const name = $("#special-rate-name").value.trim();
+  const amount = Number($("#special-rate-amount").value);
+  if (!name || $("#special-rate-amount").value === "" || !Number.isInteger(amount) || amount < 0) {
+    message.textContent = "Isi nama dan nominal (angka bulat).";
+    return;
+  }
+  const { error } = await supabase.from("special_rates").insert({ program_id: $("#special-rate-program").value, name, amount });
+  if (error) { message.textContent = errorMessage(error); return; }
+  message.textContent = "";
+  $("#special-rate-form").reset();
+  await loadFees();
+}
+
+// Tarif khusus tidak dihapus (bisa sudah dipakai sesi lama), cukup dinonaktifkan.
+async function toggleSpecialRate(id, active) {
+  const { error } = await supabase.from("special_rates").update({ is_active: active }).eq("id", id);
+  if (error) { showNotice(errorMessage(error), "error"); return; }
+  await loadFees();
+}
+
+/* ===== Rekap Gaji (PSD) ===== */
+
+let payrollRows = [];        // hasil payroll_overview: satu baris per guru-program
+let payrollAdjustments = []; // hasil payroll_adjustment_list
+let payrollTeacherId = null; // guru yang sedang dibuka di dialog
+
+function payrollPeriod() {
+  if (!$("#payroll-month").value) $("#payroll-month").value = previousMonthValue();
+  return monthToPeriod($("#payroll-month").value);
+}
+
+// Status gabungan satu guru di satu bulan (dari semua programnya).
+function payrollTeacherStatus(rows) {
+  if (rows.every((r) => r.paid_at)) return { text: "Sudah dibayar", css: "badge-active", key: "paid" };
+  if (rows.every((r) => r.psd_approved_at)) {
+    return { text: `Disetujui oleh ${rows[0].psd_approved_name || "PSD"}`, css: "badge-active", key: "approved" };
+  }
+  const notReady = rows.filter((r) => r.not_ready_count > 0).length;
+  const waitingPj = rows.filter((r) => !r.pj_acc_at).length;
+  if (!waitingPj) return { text: "Menunggu persetujuan PSD", css: "badge-incomplete", key: "waiting_psd" };
+  if (notReady) return { text: "Ada sesi belum disetujui PJ", css: "badge-inactive", key: "not_ready" };
+  return { text: `Menunggu ACC PJ (${waitingPj} program)`, css: "badge-incomplete", key: "waiting_pj" };
+}
+
+function payrollTeachers() {
+  const map = new Map();
+  payrollRows.forEach((r) => {
+    if (!map.has(r.teacher_id)) map.set(r.teacher_id, { id: r.teacher_id, name: r.teacher_name, rows: [] });
+    map.get(r.teacher_id).rows.push(r);
+  });
+  return [...map.values()].map((t) => {
+    const adjustment = payrollAdjustments.filter((a) => a.teacher_id === t.id).reduce((sum, a) => sum + a.amount, 0);
+    const fee = t.rows.reduce((sum, r) => sum + Number(r.total_fee), 0);
+    return { ...t, adjustment, total: fee + adjustment, status: payrollTeacherStatus(t.rows) };
+  });
+}
+
+async function loadPayroll() {
+  if (!isPsd) return;
+  const body = $("#payroll-table-body");
+  body.innerHTML = '<tr><td colspan="6" class="empty-cell">Memuat rekap gaji...</td></tr>';
+  try {
+    const period = payrollPeriod();
+    const [overview, adjustments] = await Promise.all([
+      supabase.rpc("payroll_overview", { p_period: period }),
+      supabase.rpc("payroll_adjustment_list", { p_period: period })
+    ]);
+    if (overview.error) throw overview.error;
+    if (adjustments.error) throw adjustments.error;
+    payrollRows = overview.data || [];
+    payrollAdjustments = adjustments.data || [];
+    renderPayroll();
+  } catch (error) {
+    body.innerHTML = `<tr><td colspan="6" class="empty-cell">Gagal memuat: ${escapeHtml(errorMessage(error))}</td></tr>`;
+  }
+}
+
+function renderPayroll() {
+  const teachers = payrollTeachers();
+  $("#payroll-table-body").innerHTML = teachers.length ? teachers.map((t) => `
+    <tr>
+      <td><span class="teacher-name">${escapeHtml(t.name)}</span></td>
+      <td>${t.rows.map((r) => `<div>${escapeHtml(r.program_name)}: ${r.session_count} sesi · ${escapeHtml(formatRupiah(r.total_fee))}
+        <span class="cell-subtext">${r.pj_acc_at ? `ACC PJ: ${escapeHtml(r.pj_acc_name || "-")}` : r.return_note ? "Dikembalikan ke PJ" : r.not_ready_count ? `${r.not_ready_count} sesi belum disetujui PJ` : "Menunggu ACC PJ"}${r.missing_fee_count ? ` · ${r.missing_fee_count} sesi tanpa tarif` : ""}</span></div>`).join("")}</td>
+      <td>${t.adjustment ? escapeHtml(formatRupiah(t.adjustment)) : "-"}</td>
+      <td><strong>${escapeHtml(formatRupiah(t.total))}</strong></td>
+      <td><span class="badge ${t.status.css}">${escapeHtml(t.status.text)}</span></td>
+      <td><button class="row-action" type="button" data-payroll-teacher="${escapeHtml(t.id)}">Detail</button></td>
+    </tr>`).join("")
+    : '<tr><td colspan="6" class="empty-cell">Tidak ada sesi untuk dibayar pada bulan ini.</td></tr>';
+}
+
+async function openPayrollDialog(teacherId) {
+  payrollTeacherId = teacherId;
+  const teacher = payrollTeachers().find((t) => t.id === teacherId);
+  if (!teacher) return;
+  $("#payroll-dialog-title").textContent = `${teacher.name} · ${formatMonth($("#payroll-month").value)}`;
+  $("#payroll-message").textContent = "";
+  $("#payroll-dialog-content").innerHTML = '<p class="muted">Memuat rincian...</p>';
+  if (!$("#payroll-dialog").open) $("#payroll-dialog").showModal();
+  const { data, error } = await supabase.rpc("payroll_sessions", { p_period: payrollPeriod(), p_teacher_id: teacherId });
+  if (error) { $("#payroll-dialog-content").innerHTML = `<p class="message">${escapeHtml(errorMessage(error))}</p>`; return; }
+  renderPayrollDialog(teacher, data || []);
+}
+
+function renderPayrollDialog(teacher, sessions) {
+  const locked = ["approved", "paid"].includes(teacher.status.key);
+  const adjustments = payrollAdjustments.filter((a) => a.teacher_id === teacher.id);
+  const sessionRow = (s) => {
+    const rates = specialRates.filter((r) => r.program_id === s.program_id && (r.is_active || r.id === s.special_rate_id));
+    const feeControl = locked
+      ? `${escapeHtml(s.special_rate_name || (s.fee_manual ? "Manual" : "Standar"))}`
+      : `<select data-fee-special="${escapeHtml(s.id)}"><option value="">Tarif standar</option>${rates.map((r) =>
+          `<option value="${escapeHtml(r.id)}" ${r.id === s.special_rate_id && !s.fee_manual ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("")}</select>
+         <input data-fee-manual="${escapeHtml(s.id)}" type="number" min="0" step="1000" placeholder="Manual (Rp)" value="${s.fee_manual ? escapeHtml(s.fee) : ""}">
+         <button class="row-action" type="button" data-fee-save="${escapeHtml(s.id)}">Simpan</button>`;
+    return `<tr>
+      <td>${escapeHtml(formatDate(s.teaching_date))}</td>
+      <td>${escapeHtml(s.program_name)}<span class="cell-subtext">${escapeHtml(s.subject || "-")}</span></td>
+      <td>${escapeHtml(METHOD_LABELS[s.method] || "-")}</td>
+      <td>${escapeHtml(s.student_count ?? "-")}</td>
+      <td>${statusBadge({ ...s, clock_out_at: true })}</td>
+      <td class="fee-control">${feeControl}</td>
+      <td><strong>${s.fee == null ? '<span class="message">Tarif belum diatur</span>' : escapeHtml(formatRupiah(s.fee))}</strong></td>
+    </tr>`;
+  };
+  const programBlocks = teacher.rows.map((r) => `
+    <div class="payroll-program">
+      <div><strong>${escapeHtml(r.program_name)}</strong> · ${r.session_count} sesi · ${escapeHtml(formatRupiah(r.total_fee))}
+        <span class="cell-subtext">${r.pj_acc_at ? `ACC PJ oleh ${escapeHtml(r.pj_acc_name || "-")} (${escapeHtml(formatDateTime(r.pj_acc_at))})` : "Belum di-ACC PJ"}${r.return_note ? ` · Catatan pengembalian: ${escapeHtml(r.return_note)}` : ""}</span></div>
+      ${r.paid_at ? "" : `<div class="payroll-return"><input data-return-note="${escapeHtml(r.program_id)}" type="text" maxlength="300" placeholder="Catatan revisi untuk PJ ${escapeHtml(r.program_name)}">
+        <button class="button button-secondary" type="button" data-return-program="${escapeHtml(r.program_id)}">Kembalikan ke PJ</button></div>`}
+    </div>`).join("");
+  const adjustmentRows = adjustments.map((a) => `<li>${escapeHtml(formatRupiah(a.amount))} — ${escapeHtml(a.reason)}
+      ${locked ? "" : `<button class="row-action" type="button" data-adjust-delete="${escapeHtml(a.id)}">Hapus</button>`}</li>`).join("");
+  $("#payroll-dialog-content").innerHTML = `
+    <p><span class="badge ${teacher.status.css}">${escapeHtml(teacher.status.text)}</span></p>
+    <div class="form-section-title">Program</div>${programBlocks}
+    <div class="form-section-title">Rincian sesi</div>
+    <div class="table-wrap"><table class="payroll-sessions"><thead><tr><th>Tanggal</th><th>Program / Mapel</th><th>Metode</th><th>Adik</th><th>Status</th><th>Tarif</th><th>Fee</th></tr></thead>
+      <tbody>${sessions.map(sessionRow).join("") || '<tr><td colspan="7" class="empty-cell">Tidak ada sesi.</td></tr>'}</tbody></table></div>
+    <div class="form-section-title">Penyesuaian (bonus + / potongan −)</div>
+    <ul class="legacy-list">${adjustmentRows || "<li>Tidak ada.</li>"}</ul>
+    ${locked ? "" : `<div class="payroll-return"><input id="adjust-amount" type="number" step="1000" placeholder="Contoh: 25000 atau -10000">
+      <input id="adjust-reason" type="text" maxlength="200" placeholder="Alasan (terlihat oleh guru & PJ)">
+      <button class="button button-secondary" type="button" id="adjust-add-btn">Tambah</button></div>`}
+    <p class="payroll-total">Total dibayarkan: <strong>${escapeHtml(formatRupiah(teacher.total))}</strong></p>`;
+  $("#payroll-approve-btn").classList.toggle("hidden", teacher.status.key !== "waiting_psd");
+  $("#payroll-paid-btn").classList.toggle("hidden", teacher.status.key !== "approved");
+}
+
+// Jalankan aksi rekap gaji lalu muat ulang tabel dan dialog.
+async function runPayrollAction(rpcName, args, successText) {
+  $("#payroll-message").textContent = "";
+  const { error } = await supabase.rpc(rpcName, args);
+  if (error) { $("#payroll-message").textContent = errorMessage(error); return; }
+  showNotice(successText);
+  await loadPayroll();
+  if (payrollTeachers().some((t) => t.id === payrollTeacherId)) await openPayrollDialog(payrollTeacherId);
+  else $("#payroll-dialog").close();
+}
+
+async function handlePayrollDialogClick(event) {
+  const period = payrollPeriod();
+  const target = event.target;
+  if (target.dataset.feeSave) {
+    const id = target.dataset.feeSave;
+    const manual = document.querySelector(`[data-fee-manual="${id}"]`).value;
+    const special = document.querySelector(`[data-fee-special="${id}"]`).value;
+    await runPayrollAction("psd_set_session_fee", {
+      p_attendance_id: id,
+      p_special_rate_id: manual === "" ? (special || null) : null,
+      p_manual_amount: manual === "" ? null : Number(manual)
+    }, "Fee sesi diperbarui.");
+  } else if (target.dataset.returnProgram) {
+    const programId = target.dataset.returnProgram;
+    const note = document.querySelector(`[data-return-note="${programId}"]`).value.trim();
+    if (!note) { $("#payroll-message").textContent = "Tulis catatan revisi untuk PJ."; return; }
+    await runPayrollAction("psd_return_payroll", { p_teacher_id: payrollTeacherId, p_program_id: programId, p_period: period, p_note: note }, "Rekap dikembalikan ke PJ.");
+  } else if (target.dataset.adjustDelete) {
+    await runPayrollAction("psd_delete_payroll_adjustment", { p_id: target.dataset.adjustDelete }, "Penyesuaian dihapus.");
+  } else if (target.id === "adjust-add-btn") {
+    const amount = Number($("#adjust-amount").value);
+    const reason = $("#adjust-reason").value.trim();
+    if (!Number.isInteger(amount) || amount === 0 || !reason) { $("#payroll-message").textContent = "Isi nominal (bukan 0) dan alasan."; return; }
+    await runPayrollAction("psd_add_payroll_adjustment", { p_teacher_id: payrollTeacherId, p_period: period, p_amount: amount, p_reason: reason }, "Penyesuaian ditambahkan.");
+  }
+}
+
+async function approvePayroll() {
+  if (!window.confirm("Setujui rekap gaji ini? Nominal akan dikunci dan guru bisa melihatnya mulai Minggu pertama bulan berikutnya.")) return;
+  await runPayrollAction("psd_approve_payroll", { p_teacher_id: payrollTeacherId, p_period: payrollPeriod() }, "Rekap gaji disetujui.");
+}
+
+async function markPayrollPaid() {
+  if (!window.confirm("Tandai sudah dibayar? Rekap dan semua sesinya akan terkunci.")) return;
+  await runPayrollAction("psd_mark_payroll_paid", { p_teacher_id: payrollTeacherId, p_period: payrollPeriod() }, "Rekap ditandai sudah dibayar.");
+}
+
+// Ekspor bendahara: 2 file CSV untuk rekap yang sudah disetujui PSD (termasuk yang sudah dibayar).
+async function exportPayroll() {
+  const teachers = payrollTeachers().filter((t) => ["approved", "paid"].includes(t.status.key));
+  if (!teachers.length) { showNotice("Belum ada rekap gaji yang disetujui PSD di bulan ini.", "error"); return; }
+  const button = $("#payroll-export-btn");
+  button.disabled = true;
+  try {
+    const month = $("#payroll-month").value;
+    const totals = [["Bulan", "Nama pengajar", "Email", "Bank", "Nomor rekening", "E-wallet", "Nomor e-wallet", "Total fee sesi", "Penyesuaian", "Total dibayarkan", "Status", "Disetujui oleh"]];
+    const details = [["Bulan", "Nama pengajar", "Tanggal", "Program", "Mapel", "Metode", "Jumlah adik", "Tarif khusus", "Fee"]];
+    for (const t of teachers) {
+      const info = teacherRows.find((row) => row.id === t.id) || {};
+      totals.push([month, t.name, info.login_email || "", info.bank_name || "", info.bank_account_number || "", info.ewallet_name || "",
+        info.ewallet_number || "", t.total - t.adjustment, t.adjustment, t.total, t.status.key === "paid" ? "Sudah dibayar" : "Disetujui PSD", t.rows[0].psd_approved_name || ""]);
+      const { data, error } = await supabase.rpc("payroll_sessions", { p_period: payrollPeriod(), p_teacher_id: t.id });
+      if (error) throw error;
+      (data || []).forEach((s) => details.push([month, t.name, s.teaching_date, s.program_name, s.subject || "", METHOD_LABELS[s.method] || "",
+        s.student_count ?? "", s.fee_manual ? "Manual" : (s.special_rate_name || ""), s.fee ?? ""]));
+    }
+    downloadCsv(`gaji-total-${month}.csv`, totals);
+    downloadCsv(`gaji-rincian-${month}.csv`, details);
+  } catch (error) {
+    showNotice(errorMessage(error), "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+/* ===== Gaji di halaman guru ===== */
+
+async function loadTeacherPayroll() {
+  const box = $("#history-payroll");
+  const month = $("#history-month").value;
+  if (!month) return;
+  box.innerHTML = '<p class="muted">Memuat rekap gaji...</p>';
+  const { data, error } = await supabase.rpc("get_my_payroll", { p_period: monthToPeriod(month) });
+  if (error) { box.innerHTML = `<p class="message">${escapeHtml(errorMessage(error))}</p>`; return; }
+  if (!data?.released) {
+    box.innerHTML = `<div class="notice">Rekap gaji ${escapeHtml(formatMonth(month))} belum tersedia. ${data?.approved
+      ? `Sudah disetujui PSD dan tampil mulai ${escapeHtml(formatDateTime(data.release_at))}.`
+      : "Tampil setelah semua absen disetujui PJ dan rekap disetujui PSD, mulai Minggu pertama bulan berikutnya."}</div>`;
+    return;
+  }
+  const sessionTotal = data.sessions.reduce((sum, s) => sum + (s.fee || 0), 0);
+  const adjustmentTotal = data.adjustments.reduce((sum, a) => sum + a.amount, 0);
+  box.innerHTML = `
+    <div class="payroll-card">
+      <p class="eyebrow">GAJI ${escapeHtml(formatMonth(month).toUpperCase())}</p>
+      <h3>${escapeHtml(formatRupiah(sessionTotal + adjustmentTotal))}</h3>
+      <p class="form-hint">Rekap gaji disetujui PSD${data.paid_at ? " · sudah dibayar" : ""}. Jika ada yang tidak sesuai, hubungi PJ programmu.</p>
+      <div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Program / Mapel</th><th>Metode</th><th>Adik</th><th>Fee</th></tr></thead><tbody>
+        ${data.sessions.map((s) => `<tr><td>${escapeHtml(formatDate(s.teaching_date))}</td><td>${escapeHtml(s.program)}<span class="cell-subtext">${escapeHtml(s.subject || "-")}${s.special_rate ? ` · ${escapeHtml(s.special_rate)}` : ""}</span></td>
+          <td>${escapeHtml(METHOD_LABELS[s.method] || "-")}</td><td>${escapeHtml(s.student_count ?? "-")}</td><td>${escapeHtml(formatRupiah(s.fee))}</td></tr>`).join("")}
+      </tbody></table></div>
+      ${data.adjustments.length ? `<div class="form-section-title">Penyesuaian</div><ul class="legacy-list">${data.adjustments.map((a) =>
+        `<li>${escapeHtml(formatRupiah(a.amount))} — ${escapeHtml(a.reason)}</li>`).join("")}</ul>` : ""}
+    </div>`;
+}
+
+function fillSpecialRateSelect(select, programId, selectedId = "") {
+  const rates = specialRates.filter((r) => r.program_id === programId && (r.is_active || r.id === selectedId));
+  select.innerHTML = '<option value="">Tidak ada — tarif standar</option>' +
+    rates.map((r) => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}</option>`).join("");
+  select.value = rates.some((r) => r.id === selectedId) ? selectedId : "";
+  return rates.length;
+}
+
 function exportStudentsCsv() {
   if (!isPsd) { showNotice("Ekspor daftar adik hanya tersedia untuk PSDM.", "error"); return; }
   const csvCell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
@@ -1533,11 +1863,28 @@ $("#close-attendance-detail-bottom").addEventListener("click", () => $("#attenda
 $("#recap-status-filter").addEventListener("change", renderAttendanceRecap);
 $("#review-approve-btn").addEventListener("click", () => submitReview("approve"));
 $("#review-reject-btn").addEventListener("click", () => submitReview("reject"));
-$("#export-ready-btn").addEventListener("click", exportReadyToSend);
-$("#mark-sent-btn").addEventListener("click", markExportedAsSent);
 $("#export-view-btn").addEventListener("click", exportCurrentView);
 $("#attendance-method").addEventListener("change", updateMethodHint);
 $("#history-month").addEventListener("change", loadTeacherHistory);
+$("#payroll-month").addEventListener("change", loadPayroll);
+$("#payroll-export-btn").addEventListener("click", exportPayroll);
+$("#payroll-table-body").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-payroll-teacher]");
+  if (button) openPayrollDialog(button.dataset.payrollTeacher);
+});
+$("#payroll-dialog-content").addEventListener("click", handlePayrollDialogClick);
+$("#payroll-approve-btn").addEventListener("click", approvePayroll);
+$("#payroll-paid-btn").addEventListener("click", markPayrollPaid);
+$("#close-payroll-btn").addEventListener("click", () => $("#payroll-dialog").close());
+$("#fee-rate-tables").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-save-fee]");
+  if (button) saveFeeRates(button.dataset.saveFee);
+});
+$("#special-rate-form").addEventListener("submit", addSpecialRate);
+$("#special-rate-table").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-special-id]");
+  if (button) toggleSpecialRate(button.dataset.specialId, button.dataset.specialActive === "true");
+});
 $("#history-table-body").addEventListener("click", (event) => {
   const button = event.target.closest("[data-fix-id]");
   if (button) openFixDialog(button.dataset.fixId);

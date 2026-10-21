@@ -325,3 +325,23 @@ tbody tr:hover { background: #fbfdfc; }
 .manager-form-panel .form-hint { margin: 12px 0 0; }
 @media (max-width: 900px) { .manager-form { grid-template-columns: 1fr; } }
 #reload-managers-btn { white-space: nowrap; }
+
+/* Tarif Fee & Rekap Gaji */
+@media (max-width: 700px) { .sidebar-nav { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.fee-panel { padding: 20px; margin-bottom: 18px; }
+.fee-panel h3 { margin: 0; }
+.fee-panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.fee-table td, .fee-table th { padding: 8px 10px; }
+.fee-input { width: 130px; height: 38px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
+.payroll-dialog { width: min(980px, calc(100% - 28px)); }
+.payroll-program { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; font-size: 13px; }
+.payroll-return { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0 12px; }
+.payroll-return input { height: 38px; min-width: 180px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
+.fee-control { white-space: nowrap; }
+.fee-control select, .fee-control input { height: 34px; padding: 0 8px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; font-size: 12px; }
+.fee-control input { width: 120px; }
+.payroll-total { margin: 14px 0 0; font-size: 15px; text-align: right; }
+.history-payroll { padding: 0 20px; }
+.payroll-card { margin-bottom: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; }
+.payroll-card h3 { font-size: 24px; margin: 4px 0; }
+@media (max-width: 760px) { .history-payroll { padding: 0 14px; } }

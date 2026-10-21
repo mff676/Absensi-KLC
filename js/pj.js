@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "./config.js";
-import { METHOD_LABELS, ATTENDANCE_COLUMNS, statusKey, statusBadge, formatDate, formatTime, attendanceDetailHtml, showAttendancePhoto } from "./attendance-utils.js";
+import { METHOD_LABELS, ATTENDANCE_COLUMNS, statusKey, statusBadge, formatDate, formatTime, attendanceDetailHtml, showAttendancePhoto, formatRupiah, formatDateTime, monthToPeriod, previousMonthValue, formatMonth } from "./attendance-utils.js";
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const $ = (s) => document.querySelector(s);
 let user = null, managedPrograms = [], students = [];
@@ -103,8 +103,10 @@ let pjAttendance = [], pjTeacherNames = new Map(), myTeacherId = null, pjAttenda
 function showPjTab(tab) {
   $("#pj-students-tab").classList.toggle("hidden", tab !== "students");
   $("#pj-attendance-tab").classList.toggle("hidden", tab !== "attendance");
+  $("#pj-payroll-tab").classList.toggle("hidden", tab !== "payroll");
   document.querySelectorAll("[data-pj-tab]").forEach((b) => b.classList.toggle("active", b.dataset.pjTab === tab));
   if (tab === "attendance" && !pjAttendanceLoaded) loadPjAttendance();
+  if (tab === "payroll") loadPjPayroll();
 }
 
 function localDate(date) {
@@ -174,10 +176,11 @@ function openPjDetail(id) {
   $("#attendance-detail-content").innerHTML = attendanceDetailHtml(row, { program: pjProgramName(row) });
   // PJ hanya mengecek sesi yang sudah selesai, masih "Menunggu PJ", dan bukan absennya sendiri.
   const isOwn = row.teacher_id === myTeacherId;
-  const canReview = statusKey(row) === "pending" && !isOwn;
+  // PJ boleh mengubah keputusan selama rekap gaji belum di-ACC (Supabase yang menolak jika sudah terkunci).
+  const canReview = ["pending", "pj_approved", "approved", "rejected"].includes(statusKey(row)) && !isOwn;
   $("#pj-review-box").classList.toggle("hidden", !canReview);
   $("#pj-review-info").classList.toggle("hidden", canReview);
-  $("#pj-review-info").textContent = isOwn ? "Ini absen milikmu sendiri, jadi dicek oleh PSD." : "Sesi ini tidak menunggu cek PJ.";
+  $("#pj-review-info").textContent = isOwn ? "Ini absen milikmu sendiri, jadi dicek oleh PSD." : "Sesi ini belum selesai atau sudah dibayar.";
   $("#pj-review-note").value = "";
   $("#pj-review-message").textContent = "";
   $("#pj-detail-dialog").showModal();
@@ -211,6 +214,101 @@ $("#pj-approve-btn").addEventListener("click", () => submitPjReview("approve"));
 $("#pj-reject-btn").addEventListener("click", () => submitPjReview("reject"));
 $("#pj-close-detail").addEventListener("click", () => $("#pj-detail-dialog").close());
 $("#pj-close-detail-bottom").addEventListener("click", () => $("#pj-detail-dialog").close());
+
+/* ===== Rekap Gaji PJ ===== */
+// PJ melihat fee (hanya baca), lalu meng-ACC rekap tiap guru di programnya setelah bulannya selesai.
+let pjPayrollRows = [], pjPayrollAdjustments = [];
+
+function pjPayrollPeriod() {
+  if (!$("#pj-payroll-month").value) $("#pj-payroll-month").value = previousMonthValue();
+  return monthToPeriod($("#pj-payroll-month").value);
+}
+
+function pjPayrollStatus(r) {
+  if (r.paid_at) return '<span class="badge badge-active">Sudah dibayar</span>';
+  if (r.psd_approved_at) return '<span class="badge badge-active">Rekap gaji disetujui PSD</span>';
+  if (r.pj_acc_at) return '<span class="badge badge-incomplete">Menunggu PSD</span>';
+  if (r.return_note) return `<span class="badge badge-rejected">Dikembalikan PSD</span><span class="cell-subtext reject-note">${esc(r.return_note)}</span>`;
+  if (r.not_ready_count) return `<span class="badge badge-inactive">${r.not_ready_count} sesi belum disetujui</span>`;
+  return '<span class="badge badge-incomplete">Siap di-ACC</span>';
+}
+
+async function loadPjPayroll() {
+  const body = $("#pj-payroll-table");
+  body.innerHTML = '<tr><td colspan="7" class="empty-cell">Memuat rekap gaji...</td></tr>';
+  $("#pj-payroll-message").textContent = "";
+  const period = pjPayrollPeriod();
+  const [overview, adjustments] = await Promise.all([
+    supabase.rpc("payroll_overview", { p_period: period }),
+    supabase.rpc("payroll_adjustment_list", { p_period: period })
+  ]);
+  if (overview.error || adjustments.error) {
+    body.innerHTML = `<tr><td colspan="7" class="empty-cell">Gagal memuat: ${esc(err(overview.error || adjustments.error))}</td></tr>`;
+    return;
+  }
+  pjPayrollRows = overview.data || [];
+  pjPayrollAdjustments = adjustments.data || [];
+  const monthEnded = period < monthToPeriod(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`);
+  body.innerHTML = pjPayrollRows.length ? pjPayrollRows.map((r) => {
+    const adjustment = pjPayrollAdjustments.filter((a) => a.teacher_id === r.teacher_id).reduce((sum, a) => sum + a.amount, 0);
+    // Tombol ACC: bulan sudah selesai, semua sesi disetujui, belum di-ACC, dan bukan rekap milik sendiri.
+    const canAcc = monthEnded && !r.pj_acc_at && !r.psd_approved_at && !r.not_ready_count && !r.is_own;
+    const accInfo = r.is_own ? '<span class="cell-subtext">Rekap milikmu di-ACC PSD</span>'
+      : !monthEnded ? '<span class="cell-subtext">ACC setelah bulan selesai</span>' : "";
+    return `<tr>
+      <td><span class="teacher-name">${esc(r.teacher_name)}</span></td>
+      <td>${esc(r.program_name)}</td>
+      <td>${r.session_count}${r.missing_fee_count ? `<span class="cell-subtext">${r.missing_fee_count} tanpa tarif</span>` : ""}</td>
+      <td>${esc(formatRupiah(r.total_fee))}</td>
+      <td>${adjustment ? esc(formatRupiah(adjustment)) : "-"}</td>
+      <td>${pjPayrollStatus(r)}</td>
+      <td><button class="row-action" type="button" data-pj-payroll-detail="${esc(r.teacher_id)}" data-program="${esc(r.program_id)}">Detail</button>
+        ${canAcc ? `<button class="row-action" type="button" data-pj-acc="${esc(r.teacher_id)}" data-program="${esc(r.program_id)}">ACC</button>` : ""}${accInfo}</td>
+    </tr>`;
+  }).join("") : '<tr><td colspan="7" class="empty-cell">Tidak ada sesi untuk direkap pada bulan ini.</td></tr>';
+}
+
+async function accPjPayroll(teacherId, programId) {
+  const row = pjPayrollRows.find((r) => r.teacher_id === teacherId && r.program_id === programId);
+  if (!row || !window.confirm(`ACC rekap ${row.teacher_name} (${row.program_name}) sebesar ${formatRupiah(row.total_fee)}? Setelah ACC, sesinya terkunci sampai PSD mengembalikan.`)) return;
+  const { error } = await supabase.rpc("pj_acc_payroll", { p_teacher_id: teacherId, p_program_id: programId, p_period: pjPayrollPeriod() });
+  if (error) { $("#pj-payroll-message").textContent = err(error); return; }
+  notice("Rekap di-ACC dan diteruskan ke PSD.");
+  await loadPjPayroll();
+}
+
+async function openPjPayrollDetail(teacherId, programId) {
+  const row = pjPayrollRows.find((r) => r.teacher_id === teacherId && r.program_id === programId);
+  if (!row) return;
+  $("#pj-payroll-title").textContent = `${row.teacher_name} · ${row.program_name} · ${formatMonth($("#pj-payroll-month").value)}`;
+  $("#pj-payroll-content").innerHTML = '<p class="muted">Memuat rincian...</p>';
+  $("#pj-payroll-dialog").showModal();
+  const { data, error } = await supabase.rpc("payroll_sessions", { p_period: pjPayrollPeriod(), p_teacher_id: teacherId });
+  if (error) { $("#pj-payroll-content").innerHTML = `<p class="message">${esc(err(error))}</p>`; return; }
+  const sessions = (data || []).filter((s) => s.program_id === programId);
+  const adjustments = pjPayrollAdjustments.filter((a) => a.teacher_id === teacherId);
+  $("#pj-payroll-content").innerHTML = `
+    ${row.return_note && !row.pj_acc_at ? `<p class="notice notice-error">Catatan PSD: ${esc(row.return_note)}. Tolak sesi yang perlu direvisi di tab Rekap Absensi, lalu ACC lagi.</p>` : ""}
+    ${row.pj_acc_at ? `<p class="form-hint">ACC oleh ${esc(row.pj_acc_name || "-")} · ${esc(formatDateTime(row.pj_acc_at))}</p>` : ""}
+    <div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Mapel</th><th>Metode</th><th>Adik</th><th>Status</th><th>Tarif</th><th>Fee</th></tr></thead><tbody>
+      ${sessions.map((s) => `<tr><td>${esc(formatDate(s.teaching_date))}</td><td>${esc(s.subject || "-")}</td><td>${esc(METHOD_LABELS[s.method] || "-")}</td>
+        <td>${esc(s.student_count ?? "-")}</td><td>${statusBadge({ ...s, clock_out_at: true })}</td>
+        <td>${esc(s.fee_manual ? "Manual (PSD)" : s.special_rate_name || "Standar")}</td><td>${s.fee == null ? "Tarif belum diatur" : esc(formatRupiah(s.fee))}</td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="form-section-title">Penyesuaian dari PSD (seluruh gaji guru bulan ini)</div>
+    <ul class="legacy-list">${adjustments.map((a) => `<li>${esc(formatRupiah(a.amount))} — ${esc(a.reason)}</li>`).join("") || "<li>Tidak ada.</li>"}</ul>
+    <p class="payroll-total">Total fee program ini: <strong>${esc(formatRupiah(row.total_fee))}</strong></p>`;
+}
+
+$("#pj-payroll-month").addEventListener("change", loadPjPayroll);
+$("#pj-payroll-table").addEventListener("click", (e) => {
+  const acc = e.target.closest("[data-pj-acc]");
+  if (acc) { accPjPayroll(acc.dataset.pjAcc, acc.dataset.program); return; }
+  const detail = e.target.closest("[data-pj-payroll-detail]");
+  if (detail) openPjPayrollDetail(detail.dataset.pjPayrollDetail, detail.dataset.program);
+});
+$("#pj-close-payroll").addEventListener("click", () => $("#pj-payroll-dialog").close());
+$("#pj-close-payroll-bottom").addEventListener("click", () => $("#pj-payroll-dialog").close());
 
 supabase.auth.onAuthStateChange((_event,session)=>{  updateTopbarAuth(!!session?.user);if(!session){view("#pj-login");$("#pj-sign-out").classList.add("hidden");}});
 (async()=>{if(SUPABASE_URL.includes("YOUR_PROJECT")||SUPABASE_PUBLISHABLE_KEY.includes("YOUR_SUPABASE")){view("#pj-login");$("#pj-login-message").textContent="Isi konfigurasi Supabase di js/config.js terlebih dahulu.";return;}try{await boot();}catch(e){view("#pj-login");$("#pj-login-message").textContent=err(e);}})();

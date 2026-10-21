@@ -23,10 +23,10 @@ export const METHOD_LABELS = { offline: "Offline", online: "Online", cancel: "Ca
 export const STATUS_LABELS = {
   running: "Berjalan",
   pending: "Menunggu PJ",
-  pj_approved: "Menunggu PSD",
+  pj_approved: "Disetujui PJ",
   approved: "Disetujui",
   rejected: "Ditolak",
-  sent: "Terkirim"
+  sent: "Dibayar"
 };
 
 export function statusKey(row) {
@@ -35,7 +35,7 @@ export function statusKey(row) {
 
 export function statusBadge(row) {
   const key = statusKey(row);
-  const css = { approved: "badge-active", sent: "badge-active", rejected: "badge-rejected" }[key] || "badge-incomplete";
+  const css = { pj_approved: "badge-active", approved: "badge-active", sent: "badge-active", rejected: "badge-rejected" }[key] || "badge-incomplete";
   return `<span class="badge ${css}">${STATUS_LABELS[key] || key}</span>`;
 }
 
@@ -191,6 +191,7 @@ export function attendanceDetailHtml(row, names) {
       <dt>Program</dt><dd>${escapeHtml(names.program)}</dd>
       <dt>Mapel</dt><dd>${escapeHtml(row.subject || "-")}</dd>
       <dt>Metode</dt><dd>${escapeHtml(METHOD_LABELS[row.method] || "-")}</dd>
+      ${names.specialRate ? `<dt>Tarif khusus</dt><dd>${escapeHtml(names.specialRate)}</dd>` : ""}
       <dt>Jam masuk</dt><dd>${escapeHtml(formatDateTime(row.clock_in_at))}</dd>
       <dt>Jam keluar</dt><dd>${escapeHtml(clockOut)}</dd>
       <dt>Lokasi masuk</dt><dd>${locationLink(row.clock_in_lat, row.clock_in_lng)}</dd>
@@ -198,8 +199,7 @@ export function attendanceDetailHtml(row, names) {
       <dt>Status</dt><dd>${statusBadge(row)}</dd>
       ${row.is_legacy ? "<dt>Sumber</dt><dd>Impor GForm lama (jam = waktu kirim form, tanpa lokasi)</dd>" : ""}
       ${checkLine("Dicek PJ", row.pj_checked_at)}
-      ${checkLine("Dicek PSD", row.psd_checked_at)}
-      ${checkLine("Terkirim", row.sent_at)}
+      ${checkLine("Dibayar", row.sent_at)}
       <dt>Catatan guru</dt><dd>${escapeHtml(row.note || "-")}</dd>
       ${row.review_status === "rejected" ? `<dt>Alasan ditolak</dt><dd>${escapeHtml(row.review_note || "-")}</dd>` : ""}
     </dl>
@@ -235,4 +235,28 @@ export async function showAttendancePhoto(supabase, path, targetId) {
 }
 
 // Kolom yang dibaca dari tabel attendance untuk rekap PSD, PJ, dan riwayat guru.
-export const ATTENDANCE_COLUMNS = "id, teacher_id, program_id, teaching_date, class_type, subject, method, note, student_count, clock_in_at, clock_out_at, clock_in_photo_path, clock_out_photo_path, clock_in_lat, clock_in_lng, clock_out_lat, clock_out_lng, auto_closed, is_legacy, review_status, review_note, pj_checked_at, psd_checked_at, sent_at, attendance_students(student_id, student_name_snapshot, class_name_snapshot)";
+export const ATTENDANCE_COLUMNS = "id, teacher_id, program_id, teaching_date, class_type, subject, method, note, student_count, clock_in_at, clock_out_at, clock_in_photo_path, clock_out_photo_path, clock_in_lat, clock_in_lng, clock_out_lat, clock_out_lng, auto_closed, is_legacy, special_rate_id, review_status, review_note, pj_checked_at, psd_checked_at, sent_at, attendance_students(student_id, student_name_snapshot, class_name_snapshot)";
+
+// Format rupiah: 150000 -> "Rp150.000"
+export function formatRupiah(value) {
+  if (value == null) return "-";
+  const sign = value < 0 ? "-" : "";
+  return `${sign}Rp${Math.abs(Number(value)).toLocaleString("id-ID")}`;
+}
+
+// "2026-10" (input type=month) -> "2026-10-01" (period di database)
+export function monthToPeriod(monthValue) {
+  return `${monthValue}-01`;
+}
+
+// Bulan lalu dalam format input type=month, contoh "2026-09".
+export function previousMonthValue() {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export function formatMonth(monthValue) {
+  const [y, m] = monthValue.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+}

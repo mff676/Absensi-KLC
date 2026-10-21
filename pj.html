@@ -52,7 +52,7 @@
     <section id="pj-app" class="hidden">
       <nav class="pj-tabs" aria-label="Menu PJ"><button class="pj-tab active" type="button"
           data-pj-tab="students">Daftar Adik</button><button class="pj-tab" type="button" data-pj-tab="attendance">Rekap
-          Absensi</button></nav>
+          Absensi</button><button class="pj-tab" type="button" data-pj-tab="payroll">Rekap Gaji</button></nav>
       <div id="pj-students-tab">
         <div class="page-heading">
           <div>
@@ -125,10 +125,10 @@
                 <option value="all">Semua status</option>
                 <option value="pending" selected>Menunggu PJ</option>
                 <option value="running">Berjalan</option>
-                <option value="pj_approved">Menunggu PSD</option>
+                <option value="pj_approved">Disetujui PJ</option>
                 <option value="approved">Disetujui</option>
                 <option value="rejected">Ditolak</option>
-                <option value="sent">Terkirim</option>
+                <option value="sent">Dibayar</option>
               </select></label>
             <label class="search-field"><span class="filter-caption">Nama pengajar</span><input id="pj-teacher-search"
                 type="search" placeholder="Cari nama pengajar..." autocomplete="off"></label>
@@ -157,6 +157,18 @@
           </div>
         </section>
       </div>
+
+      <div id="pj-payroll-tab" class="hidden">
+        <div class="page-heading">
+          <div><p class="eyebrow">DASHBOARD PJ</p><h2>Rekap Gaji</h2><p class="muted">ACC rekap tiap guru setelah bulannya selesai dan semua sesinya kamu setujui. Nominal fee hanya bisa diubah PSD.</p></div>
+          <div class="heading-actions"><label class="filter-field"><span class="filter-caption">Bulan</span><input id="pj-payroll-month" type="month"></label></div>
+        </div>
+        <p id="pj-payroll-message" class="message" role="status"></p>
+        <section class="panel directory-panel">
+          <div class="table-wrap"><table><thead><tr><th>Pengajar</th><th>Program</th><th>Sesi</th><th>Fee</th><th>Penyesuaian PSD</th><th>Status</th><th><span class="sr-only">Aksi</span></th></tr></thead>
+            <tbody id="pj-payroll-table"><tr><td colspan="7" class="empty-cell">Buka tab ini untuk memuat rekap.</td></tr></tbody></table></div>
+        </section>
+      </div>
     </section>
   </main>
   <dialog id="pj-student-dialog" class="form-dialog">
@@ -178,6 +190,13 @@
       <div class="dialog-actions"><button id="pj-cancel-dialog" class="button button-ghost"
           type="button">Batal</button><button id="pj-save-student" class="button button-primary" type="submit">Simpan
           data</button></div>
+    </form>
+  </dialog>
+  <dialog id="pj-payroll-dialog" class="form-dialog payroll-dialog">
+    <form method="dialog">
+      <div class="dialog-heading"><div><p class="eyebrow">REKAP GAJI</p><h2 id="pj-payroll-title">Rincian</h2></div><button id="pj-close-payroll" class="icon-button" type="button" aria-label="Tutup">×</button></div>
+      <div id="pj-payroll-content"></div>
+      <div class="dialog-actions"><button id="pj-close-payroll-bottom" class="button button-ghost" type="button">Tutup</button></div>
     </form>
   </dialog>
   <dialog id="pj-detail-dialog" class="form-dialog">
