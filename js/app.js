@@ -3,9 +3,10 @@ import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "./config.js";
 import {
   SUBJECTS_BY_PROGRAM, METHOD_LABELS, STATUS_LABELS, ATTENDANCE_COLUMNS, statusKey, statusBadge, formatDate, formatTime,
   formatDateTime, mapsUrl, fixDeadline, getLocation, stampPhoto, watermarkLines, downloadCsv, attendanceDetailHtml, showAttendancePhoto,
-  formatRupiah, monthToPeriod, previousMonthValue, formatMonth
+  formatRupiah, monthToPeriod, previousMonthValue, formatMonth, attendanceStudentStats, studentCountCell
 } from "./attendance-utils.js";
 import { LEGACY_HEADERS, prepareLegacyRows } from "./legacy-import.js";
+import { notify, showAlert, confirmDialog } from "./alerts.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
@@ -245,7 +246,7 @@ function renderAttendanceRecap() {
       <td>${row.method === "cancel" ? '<span class="muted">-</span>'
       : row.clock_out_at ? `${escapeHtml(formatTime(row.clock_out_at))}${row.auto_closed ? '<span class="cell-subtext">otomatis</span>' : ""}`
         : '<span class="muted">Belum clock-out</span>'}</td>
-      <td>${escapeHtml(recapStudentCount(row))} adik</td>
+      <td>${studentCountCell(row)}</td>
       <td>${statusBadge(row)}</td>
       <td><button class="row-action" type="button" data-attendance-id="${escapeHtml(row.id)}">Detail</button></td>
     </tr>`).join("")
@@ -273,7 +274,7 @@ function openAttendanceDetail(attendanceId) {
 async function submitReview(decision) {
   const note = $("#review-note").value.trim();
   if (decision === "reject" && !note) {
-    $("#review-message").textContent = "Tulis alasan penolakan agar guru tahu apa yang harus diperbaiki.";
+    showAlert("Tulis alasan penolakan agar guru tahu apa yang harus diperbaiki.", { icon: "warning" });
     return;
   }
   const buttons = [$("#review-approve-btn"), $("#review-reject-btn")];
@@ -289,7 +290,7 @@ async function submitReview(decision) {
     showNotice(decision === "approve" ? "Sesi disetujui." : "Sesi ditolak. Guru bisa memperbaikinya dari riwayat.");
     await loadAttendanceRecap();
   } catch (error) {
-    $("#review-message").textContent = errorMessage(error);
+    showAlert(errorMessage(error));
   } finally {
     buttons.forEach((b) => { b.disabled = false; });
   }
@@ -299,17 +300,20 @@ async function submitReview(decision) {
 // jadi ekspor cukup mencantumkan waktunya.
 function exportRows(rows) {
   const header = ["Tanggal", "Jam masuk", "Jam keluar", "Ditutup otomatis", "Nama pengajar", "Email", "Bank", "Nomor rekening",
-    "E-wallet", "Nomor e-wallet", "Program", "Mapel", "Metode", "Jumlah adik", "Nama adik", "Status",
+    "E-wallet", "Nomor e-wallet", "Program", "Mapel", "Metode", "Jumlah adik hadir", "Adik hadir", "Adik terdaftar tapi tidak hadir", "Status",
     "Dicek PJ", "Dicek PSD", "Terkirim", "Catatan guru", "Lokasi masuk", "Lokasi keluar"];
   const when = (value) => (value ? formatDateTime(value) : "");  // kosong, bukan "-", agar rapi di Excel
   const body = rows.map((row) => {
     const teacher = recapTeacher(row) || {};
-    const students = (row.attendance_students || []).map((s) => `${s.student_name_snapshot} (${s.class_name_snapshot})`).join("; ");
+    const stats = attendanceStudentStats(row);
+    const nameOf = (s) => `${s.student_name_snapshot} (${s.class_name_snapshot})`;
+    const students = stats.present.map(nameOf).join("; ");
+    const absentStudents = stats.absent.map(nameOf).join("; ");
     return [
       row.teaching_date, formatTime(row.clock_in_at), row.method === "cancel" || !row.clock_out_at ? "" : formatTime(row.clock_out_at),
       row.auto_closed ? "Ya" : "Tidak", teacher.full_name || "", teacher.login_email || "", teacher.bank_name || "",
       teacher.bank_account_number || "", teacher.ewallet_name || "", teacher.ewallet_number || "",
-      recapProgramName(row), row.subject || "", METHOD_LABELS[row.method] || "", recapStudentCount(row), students,
+      recapProgramName(row), row.subject || "", METHOD_LABELS[row.method] || "", row.clock_out_at ? stats.present.length : "", row.clock_out_at ? students : "", row.clock_out_at ? absentStudents : "",
       STATUS_LABELS[statusKey(row)], when(row.pj_checked_at), when(row.psd_checked_at), when(row.sent_at), row.note || "", mapsUrl(row.clock_in_lat, row.clock_in_lng) || "",
       mapsUrl(row.clock_out_lat, row.clock_out_lng) || ""
     ];
@@ -349,11 +353,7 @@ function renderTeachers() {
 }
 
 function showNotice(message, type = "success") {
-  const notice = $("#notice");
-  notice.textContent = message;
-  notice.className = `notice notice-${type}`;
-  notice.classList.remove("hidden");
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  notify(message, type);
 }
 
 function errorMessage(error) {
@@ -485,10 +485,7 @@ function openTeacherDialog(teacher = null) {
 }
 
 function showTeacherNotice(message, type = "success") {
-  const notice = $("#teacher-notice");
-  notice.textContent = message;
-  notice.className = `notice notice-${type}`;
-  notice.classList.remove("hidden");
+  notify(message, type);
 }
 
 function selectedProgram() {
@@ -523,7 +520,7 @@ async function updateAttendanceForm() {
     $("#attendance-form-message").textContent = attendanceStudentRows.length ? "" : "Belum ada data adik untuk program ini. Hubungi PSDM untuk mengimpor daftar adik.";
   } catch (error) {
     select.innerHTML = '<option disabled>Gagal memuat daftar adik</option>';
-    $("#attendance-form-message").textContent = errorMessage(error);
+    showAlert(errorMessage(error));
   }
 }
 
@@ -562,7 +559,7 @@ async function loadTeacherAttendance() {
 
   const { data: session, error: sessionError } = await supabase
     .from("attendance")
-    .select("id, program_id, class_type, subject, method, student_count, teaching_date, clock_in_at")
+    .select("id, program_id, class_type, subject, method, student_count, teaching_date, clock_in_at, note")
     .eq("teacher_id", teacherRecord.id)
     .not("clock_in_at", "is", null)
     .is("clock_out_at", null)
@@ -578,11 +575,57 @@ async function loadTeacherAttendance() {
     const programName = assignedPrograms.find((p) => p.id === openAttendance.program_id)?.name || openAttendance.class_type;
     $("#open-session-title").textContent = `Sesi ${programName}${openAttendance.subject ? " · " + openAttendance.subject : ""} belum ditutup`;
     $("#open-session-detail").textContent = `Tanggal ${openAttendance.teaching_date}, absen masuk ${new Date(openAttendance.clock_in_at).toLocaleString("id-ID")}`;
+    await loadClockOutStudents();
   }
   $("#attendance-loading").classList.add("hidden");
   $("#attendance-content").classList.remove("hidden");
   updateAttendanceForm();
   await loadTeacherHistory();
+}
+
+/* ===== Daftar hadir adik saat absen keluar ===== */
+
+let clockOutRegistered = [];
+
+async function loadClockOutStudents() {
+  const list = $("#present-list");
+  list.innerHTML = '<span class="muted">Memuat daftar adik...</span>';
+  $("#present-extra").innerHTML = "";
+  const registered = await supabase.from("attendance_students")
+    .select("student_id, student_name_snapshot, class_name_snapshot")
+    .eq("attendance_id", openAttendance.id)
+    .order("class_name_snapshot").order("student_name_snapshot");
+  if (registered.error) { list.innerHTML = '<span class="message">Gagal memuat daftar adik.</span>'; showAlert(errorMessage(registered.error)); return; }
+  clockOutRegistered = registered.data || [];
+  list.innerHTML = clockOutRegistered.map((s) => `
+    <label class="present-item">
+      <input type="checkbox" name="present-student" value="${escapeHtml(s.student_id)}">
+      <span>${escapeHtml(s.student_name_snapshot)} <small>${escapeHtml(s.class_name_snapshot)}</small></span>
+    </label>`).join("") || '<span class="muted">Tidak ada adik terdaftar.</span>';
+  // Adik lain di program yang sama (belum terdaftar di sesi ini) untuk yang ikut dadakan.
+  const others = await supabase.from("students").select("id, class_name, full_name")
+    .eq("program_id", openAttendance.program_id).eq("is_active", true)
+    .order("class_name").order("full_name");
+  const taken = new Set(clockOutRegistered.map((s) => s.student_id));
+  $("#present-extra").innerHTML = (others.data || []).filter((s) => !taken.has(s.id))
+    .map((s) => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.class_name)} · ${escapeHtml(s.full_name)}</option>`).join("");
+  updatePresentCount();
+}
+
+function checkedPresentIds() {
+  return Array.from(document.querySelectorAll('#present-list input[name="present-student"]:checked')).map((el) => el.value);
+}
+
+function extraPresentIds() {
+  return Array.from($("#present-extra").selectedOptions).map((o) => o.value).filter(Boolean);
+}
+
+function updatePresentCount() {
+  const total = checkedPresentIds().length + extraPresentIds().length;
+  $("#present-count").textContent = `${total} hadir dari ${clockOutRegistered.length} terdaftar`;
+  const full = total >= 6;
+  for (const option of $("#present-extra").options) option.disabled = full && !option.selected;
+  for (const box of document.querySelectorAll('#present-list input[name="present-student"]')) box.disabled = full && !box.checked;
 }
 
 async function uploadAttendancePhoto(file, kind) {
@@ -643,11 +686,11 @@ async function submitClockIn(event) {
   const photoFile = $("#clock-in-photo").files?.[0];
   const studentIds = Array.from($("#attendance-students").selectedOptions).map((option) => option.value).filter(Boolean);
 
-  if (!program) { message.textContent = "Pilih program terlebih dahulu."; return; }
-  if (!subject) { message.textContent = "Pilih mapel yang diajarkan."; return; }
-  if (studentIds.length < 1 || studentIds.length > 6) { message.textContent = "Pilih minimal 1 dan maksimal 6 nama adik."; return; }
-  if (method === "cancel" && !note) { message.textContent = "Tulis alasan cancel class di kolom catatan."; return; }
-  if (!photoFile) { message.textContent = "Ambil foto terlebih dahulu."; return; }
+  if (!program) { showAlert("Pilih program terlebih dahulu.", { icon: "warning" }); return; }
+  if (!subject) { showAlert("Pilih mapel yang diajarkan.", { icon: "warning" }); return; }
+  if (studentIds.length < 1 || studentIds.length > 6) { showAlert("Pilih minimal 1 dan maksimal 6 nama adik.", { icon: "warning" }); return; }
+  if (method === "cancel" && !note) { showAlert("Tulis alasan cancel class di kolom catatan.", { icon: "warning" }); return; }
+  if (!photoFile) { showAlert("Ambil foto terlebih dahulu.", { icon: "warning" }); return; }
 
   const button = $("#clock-in-btn");
   button.disabled = true;
@@ -674,7 +717,7 @@ async function submitClockIn(event) {
     showTeacherNotice(method === "cancel" ? "Cancel class berhasil dicatat." : "Absen masuk berhasil dicatat.");
     await loadTeacherAttendance();
   } catch (error) {
-    message.textContent = errorMessage(error);
+    showAlert(errorMessage(error));
   } finally {
     button.disabled = false;
     updateMethodHint();
@@ -684,13 +727,42 @@ async function submitClockIn(event) {
 async function submitClockOut() {
   if (!isTeacher || !openAttendance) return;
   const photoFile = $("#clock-out-photo").files?.[0];
-  if (!photoFile) { showTeacherNotice("Ambil foto absen keluar terlebih dahulu.", "error"); return; }
+  const note = $("#clock-out-note").value.trim();
+  const presentIds = [...checkedPresentIds(), ...extraPresentIds()];
+  if (presentIds.length > 6) { await showAlert("Adik yang hadir maksimal 6.", { icon: "warning" }); return; }
+  if (!photoFile) { await showAlert("Ambil foto absen keluar terlebih dahulu.", { icon: "warning" }); return; }
+
+  // Ringkasan untuk dicek guru sebelum dikirim.
+  const nameOf = (id) => clockOutRegistered.find((s) => s.student_id === id)?.student_name_snapshot
+    || $("#present-extra").querySelector(`option[value="${id}"]`)?.textContent.split(" · ").pop() || "";
+  const absent = clockOutRegistered.filter((s) => !presentIds.includes(s.student_id)).map((s) => s.student_name_snapshot);
+  const present = presentIds.map(nameOf);
+  if (!presentIds.length) {
+    if (!note && !openAttendance.note) {
+      await showAlert("Tidak ada adik yang dicentang, jadi sesi ini menjadi cancel class. Tulis alasannya di kolom catatan.", { icon: "warning" });
+      return;
+    }
+    const ok = await confirmDialog({
+      title: "Tidak ada adik yang hadir?",
+      text: "Sesi akan tercatat sebagai Cancel class dan fee mengikuti tarif cancel class.",
+      confirmText: "Ya, catat cancel class", icon: "warning"
+    });
+    if (!ok) return;
+  } else {
+    const ok = await confirmDialog({
+      title: "Kirim absen keluar?",
+      text: `Hadir (${present.length}): ${present.join(", ")}.` + (absent.length ? ` Tidak hadir (${absent.length}): ${absent.join(", ")}.` : " Semua adik terdaftar hadir."),
+      confirmText: "Ya, absen keluar"
+    });
+    if (!ok) return;
+  }
+
   const button = $("#clock-out-btn");
   button.disabled = true;
   button.textContent = "Mengambil lokasi...";
   try {
     const program = assignedPrograms.find((p) => p.id === openAttendance.program_id);
-    const { photo, location } = await takeStampedPhoto(photoFile, "Absen keluar", program, openAttendance.subject, openAttendance.method);
+    const { photo, location } = await takeStampedPhoto(photoFile, "Absen keluar", program, openAttendance.subject, presentIds.length ? openAttendance.method : "cancel");
     button.textContent = "Mengunggah foto...";
     const photoPath = await uploadAttendancePhoto(photo, "clock-out");
     const { data: result, error } = await supabase.rpc("clock_out_v2", {
@@ -698,19 +770,22 @@ async function submitClockOut() {
       p_photo_path: photoPath,
       p_lat: location.lat,
       p_lng: location.lng,
-      p_note: $("#clock-out-note").value.trim() || null
+      p_note: note || null,
+      p_present_ids: presentIds
     });
     if (error) throw error;
     $("#clock-out-photo").value = "";
     $("#clock-out-note").value = "";
     if (result === "auto_closed") {
-      showTeacherNotice("Sesi sudah lewat 120 menit sehingga ditutup otomatis. PJ akan memutuskan sesi ini.", "error");
+      await showAlert("Sesi sudah lewat 120 menit sehingga ditutup otomatis. PJ akan memutuskan sesi ini.", { icon: "warning", title: "Sesi ditutup otomatis" });
+    } else if (result === "cancelled") {
+      showTeacherNotice("Tidak ada adik yang hadir, sesi dicatat sebagai Cancel class.");
     } else {
       showTeacherNotice("Absen keluar berhasil dicatat.");
     }
     await loadTeacherAttendance();
   } catch (error) {
-    showTeacherNotice(errorMessage(error), "error");
+    showAlert(errorMessage(error));
   } finally {
     button.disabled = false;
     button.textContent = "Absen keluar";
@@ -773,7 +848,7 @@ function renderTeacherHistory() {
       <td>${escapeHtml(METHOD_LABELS[row.method] || "-")}</td>
       <td>${escapeHtml(formatTime(row.clock_in_at))}</td>
       <td>${row.method === "cancel" ? "-" : escapeHtml(formatTime(row.clock_out_at))}${row.auto_closed ? '<span class="cell-subtext">otomatis</span>' : ""}</td>
-      <td>${escapeHtml(row.student_count ?? row.attendance_students?.length ?? 0)}</td>
+      <td>${studentCountCell(row)}</td>
       <td>${statusBadge(row)}${row.review_status === "rejected" ? `<span class="cell-subtext reject-note">${escapeHtml(row.review_note || "")}</span>` : ""}</td>
       <td>${canFix(row) ? `<button class="row-action" type="button" data-fix-id="${escapeHtml(row.id)}">Perbaiki</button>` : ""}</td>
     </tr>`).join("")
@@ -801,6 +876,21 @@ async function updateRejectedBanner() {
 
 let fixRow = null;
 
+// Status centang "hadir" per adik di dialog perbaikan (id -> true/false), supaya tidak hilang saat daftar diubah.
+let fixPresentState = new Map();
+
+function renderFixPresent() {
+  const list = $("#fix-present-list");
+  // Simpan dulu centang yang sedang tampil.
+  list.querySelectorAll("input[name='fix-present']").forEach((el) => fixPresentState.set(el.value, el.checked));
+  const selected = Array.from($("#fix-students").selectedOptions).filter((o) => o.value);
+  list.innerHTML = selected.map((o) => `
+    <label class="present-item">
+      <input type="checkbox" name="fix-present" value="${escapeHtml(o.value)}" ${fixPresentState.get(o.value) ? "checked" : ""}>
+      <span>${escapeHtml(o.textContent.split(" · ").pop())} <small>${escapeHtml(o.textContent.split(" · ")[0])}</small></span>
+    </label>`).join("") || '<span class="muted">Pilih adik terlebih dahulu.</span>';
+}
+
 async function loadFixStudents(programId, selectedIds = []) {
   const select = $("#fix-students");
   select.innerHTML = '<option disabled>Memuat daftar adik...</option>';
@@ -812,6 +902,7 @@ async function loadFixStudents(programId, selectedIds = []) {
   select.innerHTML = (data || []).map((s) =>
     `<option value="${escapeHtml(s.id)}" ${selectedIds.includes(s.id) ? "selected" : ""}>${escapeHtml(s.class_name)} · ${escapeHtml(s.full_name)}</option>`
   ).join("") || '<option disabled>Tidak ada adik aktif untuk program ini</option>';
+  renderFixPresent();
 }
 
 async function openFixDialog(attendanceId) {
@@ -831,6 +922,8 @@ async function openFixDialog(attendanceId) {
   $("#fix-photo-in").value = "";
   $("#fix-photo-out").value = "";
   $("#fix-photo-out-wrap").classList.toggle("hidden", isCancel);
+  $("#fix-present-wrap").classList.toggle("hidden", isCancel);
+  fixPresentState = new Map((fixRow.attendance_students || []).map((s) => [s.student_id, s.attended !== false]));
   $("#fix-message").textContent = "";
   const program = assignedPrograms.find((p) => p.id === $("#fix-program").value);
   fillSubjectSelect($("#fix-subject"), program?.code, fixRow.subject);
@@ -843,6 +936,7 @@ async function changeFixProgram() {
   const program = assignedPrograms.find((p) => p.id === $("#fix-program").value);
   fillSubjectSelect($("#fix-subject"), program?.code, $("#fix-subject").value);
   fillSpecialRateSelect($("#fix-special-rate"), $("#fix-program").value);
+  fixPresentState = new Map();
   await loadFixStudents($("#fix-program").value, []);
 }
 
@@ -855,9 +949,15 @@ async function submitFix(event) {
   const method = $("#fix-method").value;
   const note = $("#fix-note").value.trim();
   const studentIds = Array.from($("#fix-students").selectedOptions).map((o) => o.value).filter(Boolean);
-  if (!program || !subject) { message.textContent = "Program dan mapel wajib dipilih."; return; }
-  if (studentIds.length < 1 || studentIds.length > 6) { message.textContent = "Pilih minimal 1 dan maksimal 6 nama adik."; return; }
-  if (method === "cancel" && !note) { message.textContent = "Alasan cancel class wajib diisi."; return; }
+  if (!program || !subject) { showAlert("Program dan mapel wajib dipilih.", { icon: "warning" }); return; }
+  if (studentIds.length < 1 || studentIds.length > 6) { showAlert("Pilih minimal 1 dan maksimal 6 nama adik.", { icon: "warning" }); return; }
+  if (method === "cancel" && !note) { showAlert("Alasan cancel class wajib diisi.", { icon: "warning" }); return; }
+  renderFixPresent(); // simpan centang terakhir ke state
+  const presentIds = method === "cancel" ? [] : Array.from(document.querySelectorAll("#fix-present-list input[name='fix-present']:checked")).map((el) => el.value);
+  if (method !== "cancel" && !presentIds.length) {
+    showAlert("Centang minimal 1 adik yang hadir. Jika tidak ada yang hadir, sesi ini seharusnya cancel class.", { icon: "warning" });
+    return;
+  }
   const button = $("#save-fix-btn");
   button.disabled = true;
   button.textContent = "Menyimpan...";
@@ -885,14 +985,15 @@ async function submitFix(event) {
       p_note: note || null,
       p_clock_in_photo_path: inPath,
       p_clock_out_photo_path: outPath,
-      p_special_rate_id: $("#fix-special-rate").value || null
+      p_special_rate_id: $("#fix-special-rate").value || null,
+      p_present_ids: presentIds
     });
     if (error) throw error;
     $("#fix-dialog").close();
     showTeacherNotice("Perbaikan tersimpan. Absen kembali menunggu cek PJ.");
     await loadTeacherHistory();
   } catch (error) {
-    message.textContent = errorMessage(error);
+    showAlert(errorMessage(error));
   } finally {
     button.disabled = false;
     button.textContent = "Simpan perbaikan";
@@ -1077,7 +1178,7 @@ async function saveStudent(event) {
     $("#student-dialog").close();
     showNotice(id ? "Data adik berhasil diperbarui." : "Adik baru berhasil ditambahkan.");
   } catch (error) {
-    message.textContent = errorMessage(error);
+    showAlert(errorMessage(error));
   } finally {
     button.disabled = false;
     button.textContent = id ? "Simpan perubahan" : "Tambah adik";
@@ -1218,7 +1319,7 @@ async function confirmLegacyImport() {
     showNotice(`Impor selesai: ${data.inserted} absen baru, ${data.skipped} dilewati karena sudah pernah diimpor. Atur rentang tanggal untuk melihatnya.`);
     await loadAttendanceRecap();
   } catch (error) {
-    $("#legacy-message").textContent = errorMessage(error);
+    showAlert(errorMessage(error));
     button.disabled = false;
     button.textContent = "Coba lagi";
   }
@@ -1268,8 +1369,8 @@ async function saveProgramManager(event) {
   const message = $("#manager-message");
   const programId = $("#manager-program").value;
   const email = $("#manager-email").value.trim().toLowerCase();
-  if (!programId) { message.textContent = "Pilih program terlebih dahulu."; return; }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { message.textContent = "Masukkan email Google yang valid."; return; }
+  if (!programId) { showAlert("Pilih program terlebih dahulu.", { icon: "warning" }); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showAlert("Masukkan email Google yang valid.", { icon: "warning" }); return; }
   const programName = programRows.find((p) => p.id === programId)?.name || "program ini";
   // Aturan maks 2 PJ per program & 1 orang 1 program dicek di Supabase; pesan errornya tampil di bawah form.
   const button = $("#save-manager-btn");
@@ -1286,7 +1387,7 @@ async function saveProgramManager(event) {
     showNotice(`${email} sekarang menjadi PJ ${programName}.`);
     await loadProgramManagers();
   } catch (error) {
-    message.textContent = errorMessage(error);
+    showAlert(errorMessage(error));
   } finally {
     button.disabled = false;
   }
@@ -1298,7 +1399,7 @@ async function toggleProgramManager(id, active) {
   const text = active
     ? `Aktifkan ${row.full_name || row.email} sebagai PJ ${row.program_name}?`
     : `Nonaktifkan ${row.full_name || row.email} sebagai PJ ${row.program_name}?`;
-  if (!window.confirm(text)) return;
+  if (!(await confirmDialog({ title: active ? "Aktifkan PJ?" : "Nonaktifkan PJ?", text, confirmText: active ? "Ya, aktifkan" : "Ya, nonaktifkan" }))) return;
   const { error } = await supabase.rpc("psd_set_program_manager_active", { p_id: id, p_active: active });
   if (error) { showNotice(errorMessage(error), "error"); return; }
   showNotice(active ? "PJ diaktifkan." : "PJ dinonaktifkan.");
@@ -1371,7 +1472,7 @@ async function saveFeeRates(programId) {
     const existing = feeRates.find((r) => r.program_id === programId && r.method === input.dataset.method && r.student_count === count);
     if (input.value === "") { if (existing) emptyIds.push(existing.id); continue; }
     const amount = Number(input.value);
-    if (!Number.isInteger(amount) || amount < 0) { message.textContent = "Nominal harus angka bulat dan tidak negatif."; return; }
+    if (!Number.isInteger(amount) || amount < 0) { showAlert("Nominal harus angka bulat dan tidak negatif.", { icon: "warning" }); return; }
     rows.push({ program_id: programId, method: input.dataset.method, student_count: count, amount, updated_at: new Date().toISOString(), updated_by: currentUser.id });
   }
   message.textContent = "Menyimpan...";
@@ -1389,7 +1490,7 @@ async function saveFeeRates(programId) {
     showNotice("Tarif tersimpan. Rekap yang sudah disetujui tidak berubah.");
     await loadFees();
   } catch (error) {
-    message.textContent = errorMessage(error);
+    showAlert(errorMessage(error));
   }
 }
 
@@ -1411,11 +1512,11 @@ async function addSpecialRate(event) {
   const name = $("#special-rate-name").value.trim();
   const amount = Number($("#special-rate-amount").value);
   if (!name || $("#special-rate-amount").value === "" || !Number.isInteger(amount) || amount < 0) {
-    message.textContent = "Isi nama dan nominal (angka bulat).";
+    showAlert("Isi nama dan nominal (angka bulat).", { icon: "warning" });
     return;
   }
   const { error } = await supabase.from("special_rates").insert({ program_id: $("#special-rate-program").value, name, amount });
-  if (error) { message.textContent = errorMessage(error); return; }
+  if (error) { showAlert(errorMessage(error)); return; }
   message.textContent = "";
   $("#special-rate-form").reset();
   await loadFees();
@@ -1528,7 +1629,7 @@ function renderPayrollDialog(teacher, sessions) {
       <td>${escapeHtml(formatDate(s.teaching_date))}</td>
       <td>${escapeHtml(s.program_name)}<span class="cell-subtext">${escapeHtml(s.subject || "-")}</span></td>
       <td>${escapeHtml(METHOD_LABELS[s.method] || "-")}</td>
-      <td>${escapeHtml(s.student_count ?? "-")}</td>
+      <td>${escapeHtml(s.student_count ?? "-")}${s.absent_names ? `<span class="cell-subtext absent-note">Tidak hadir: ${escapeHtml(s.absent_names)}</span>` : ""}</td>
       <td>${statusBadge({ ...s, clock_out_at: true })}</td>
       <td class="fee-control">${feeControl}</td>
       <td><strong>${s.fee == null ? '<span class="message">Tarif belum diatur</span>' : escapeHtml(formatRupiah(s.fee))}</strong></td>
@@ -1563,7 +1664,7 @@ function renderPayrollDialog(teacher, sessions) {
 async function runPayrollAction(rpcName, args, successText) {
   $("#payroll-message").textContent = "";
   const { error } = await supabase.rpc(rpcName, args);
-  if (error) { $("#payroll-message").textContent = errorMessage(error); return; }
+  if (error) { showAlert(errorMessage(error)); return; }
   showNotice(successText);
   await loadPayroll();
   if (payrollTeachers().some((t) => t.id === payrollTeacherId)) await openPayrollDialog(payrollTeacherId);
@@ -1585,25 +1686,25 @@ async function handlePayrollDialogClick(event) {
   } else if (target.dataset.returnProgram) {
     const programId = target.dataset.returnProgram;
     const note = document.querySelector(`[data-return-note="${programId}"]`).value.trim();
-    if (!note) { $("#payroll-message").textContent = "Tulis catatan revisi untuk PJ."; return; }
+    if (!note) { showAlert("Tulis catatan revisi untuk PJ.", { icon: "warning" }); return; }
     await runPayrollAction("psd_return_payroll", { p_teacher_id: payrollTeacherId, p_program_id: programId, p_period: period, p_note: note }, "Rekap dikembalikan ke PJ.");
   } else if (target.dataset.adjustDelete) {
     await runPayrollAction("psd_delete_payroll_adjustment", { p_id: target.dataset.adjustDelete }, "Penyesuaian dihapus.");
   } else if (target.id === "adjust-add-btn") {
     const amount = Number($("#adjust-amount").value);
     const reason = $("#adjust-reason").value.trim();
-    if (!Number.isInteger(amount) || amount === 0 || !reason) { $("#payroll-message").textContent = "Isi nominal (bukan 0) dan alasan."; return; }
+    if (!Number.isInteger(amount) || amount === 0 || !reason) { showAlert("Isi nominal (bukan 0) dan alasan.", { icon: "warning" }); return; }
     await runPayrollAction("psd_add_payroll_adjustment", { p_teacher_id: payrollTeacherId, p_period: period, p_amount: amount, p_reason: reason }, "Penyesuaian ditambahkan.");
   }
 }
 
 async function approvePayroll() {
-  if (!window.confirm("Setujui rekap gaji ini? Nominal akan dikunci dan guru bisa melihatnya mulai Minggu pertama bulan berikutnya.")) return;
+  if (!(await confirmDialog({ title: "Setujui rekap gaji?", text: "Nominal akan dikunci dan guru bisa melihatnya mulai Minggu pertama bulan berikutnya.", confirmText: "Ya, setujui" }))) return;
   await runPayrollAction("psd_approve_payroll", { p_teacher_id: payrollTeacherId, p_period: payrollPeriod() }, "Rekap gaji disetujui.");
 }
 
 async function markPayrollPaid() {
-  if (!window.confirm("Tandai sudah dibayar? Rekap dan semua sesinya akan terkunci.")) return;
+  if (!(await confirmDialog({ title: "Tandai sudah dibayar?", text: "Rekap dan semua sesinya akan terkunci.", confirmText: "Ya, sudah dibayar" }))) return;
   await runPayrollAction("psd_mark_payroll_paid", { p_teacher_id: payrollTeacherId, p_period: payrollPeriod() }, "Rekap ditandai sudah dibayar.");
 }
 
@@ -1616,7 +1717,7 @@ async function exportPayroll() {
   try {
     const month = $("#payroll-month").value;
     const totals = [["Bulan", "Nama pengajar", "Email", "Bank", "Nomor rekening", "E-wallet", "Nomor e-wallet", "Total fee sesi", "Penyesuaian", "Total dibayarkan", "Status", "Disetujui oleh"]];
-    const details = [["Bulan", "Nama pengajar", "Tanggal", "Program", "Mapel", "Metode", "Jumlah adik", "Tarif khusus", "Fee"]];
+    const details = [["Bulan", "Nama pengajar", "Tanggal", "Program", "Mapel", "Metode", "Jumlah adik hadir", "Adik tidak hadir", "Tarif khusus", "Fee"]];
     for (const t of teachers) {
       const info = teacherRows.find((row) => row.id === t.id) || {};
       totals.push([month, t.name, info.login_email || "", info.bank_name || "", info.bank_account_number || "", info.ewallet_name || "",
@@ -1624,7 +1725,7 @@ async function exportPayroll() {
       const { data, error } = await supabase.rpc("payroll_sessions", { p_period: payrollPeriod(), p_teacher_id: t.id });
       if (error) throw error;
       (data || []).forEach((s) => details.push([month, t.name, s.teaching_date, s.program_name, s.subject || "", METHOD_LABELS[s.method] || "",
-        s.student_count ?? "", s.fee_manual ? "Manual" : (s.special_rate_name || ""), s.fee ?? ""]));
+        s.student_count ?? "", s.absent_names || "", s.fee_manual ? "Manual" : (s.special_rate_name || ""), s.fee ?? ""]));
     }
     downloadCsv(`gaji-total-${month}.csv`, totals);
     downloadCsv(`gaji-rincian-${month}.csv`, details);
@@ -1709,25 +1810,25 @@ async function saveTeacherProgramAssignments(teacherId) {
 async function saveTeacher(event) {
   event.preventDefault();
   if (!isPsd) {
-    $("#form-message").textContent = "Akses hanya untuk PSD.";
+    showAlert("Akses hanya untuk PSD.", { icon: "warning" });
     return;
   }
   const fullName = fields.name.value.trim();
   const loginEmail = fields.email.value.trim().toLowerCase();
   if (!fullName) {
-    $("#form-message").textContent = "Nama lengkap wajib diisi.";
+    showAlert("Nama lengkap wajib diisi.", { icon: "warning" });
     fields.name.focus();
     return;
   }
   if (!loginEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail)) {
-    $("#form-message").textContent = "Masukkan email login yang valid.";
+    showAlert("Masukkan email login yang valid.", { icon: "warning" });
     fields.email.focus();
     return;
   }
 
   const duplicate = teacherRows.find((t) => (t.login_email || "").toLowerCase() === loginEmail && t.id !== fields.id.value);
   if (duplicate) {
-    $("#form-message").textContent = "Email ini sudah digunakan oleh pengajar lain.";
+    showAlert("Email ini sudah digunakan oleh pengajar lain.", { icon: "warning" });
     fields.email.focus();
     return;
   }
@@ -1762,7 +1863,7 @@ async function saveTeacher(event) {
     await loadTeachers();
     showNotice(fields.id.value ? "Data pengajar dan penugasan program berhasil diperbarui." : "Data pengajar dan penugasan program berhasil ditambahkan.");
   } catch (error) {
-    $("#form-message").textContent = errorMessage(error);
+    showAlert(errorMessage(error));
   } finally {
     saveButton.disabled = false;
     saveButton.textContent = fields.id.value ? "Simpan perubahan" : "Simpan data";
@@ -1792,7 +1893,7 @@ $("#google-login-btn").addEventListener("click", async () => {
     });
     if (error) throw error;
   } catch (error) {
-    $("#login-message").textContent = errorMessage(error);
+    showAlert(errorMessage(error));
     $("#google-login-btn").disabled = false;
   }
 });
@@ -1822,7 +1923,7 @@ $("#attendance-students").addEventListener("change", updateSelectedStudentCount)
 $("#import-students-btn").addEventListener("click", () => $("#import-students-file").click());
 $("#import-students-file").addEventListener("change", async (event) => {
   try { await importStudents(event.target.files?.[0]); }
-  catch (error) { $("#student-roster-message").textContent = errorMessage(error); showNotice(errorMessage(error), "error"); }
+  catch (error) { showAlert(errorMessage(error)); }
 });
 $("#export-students-btn").addEventListener("click", exportStudentsCsv);
 $("#manager-form").addEventListener("submit", saveProgramManager);
@@ -1890,11 +1991,21 @@ $("#history-table-body").addEventListener("click", (event) => {
   if (button) openFixDialog(button.dataset.fixId);
 });
 $("#fix-program").addEventListener("change", changeFixProgram);
+$("#fix-students").addEventListener("change", renderFixPresent);
 $("#fix-form").addEventListener("submit", submitFix);
 $("#close-fix-btn").addEventListener("click", () => $("#fix-dialog").close());
 $("#cancel-fix-btn").addEventListener("click", () => $("#fix-dialog").close());
 $("#clock-in-form").addEventListener("submit", submitClockIn);
 $("#clock-out-btn").addEventListener("click", submitClockOut);
+$("#present-list").addEventListener("change", updatePresentCount);
+$("#present-extra").addEventListener("change", updatePresentCount);
+$("#present-all-btn").addEventListener("click", () => {
+  const boxes = Array.from(document.querySelectorAll('#present-list input[name="present-student"]'));
+  const allChecked = boxes.every((b) => b.checked);
+  boxes.forEach((b) => { b.checked = !allChecked; b.disabled = false; });
+  $("#present-all-btn").textContent = allChecked ? "Centang semua" : "Kosongkan";
+  updatePresentCount();
+});
 
 $("#teacher-table-body").addEventListener("click", (event) => {
   const button = event.target.closest("[data-edit-id]");
@@ -1933,6 +2044,6 @@ supabase.auth.onAuthStateChange((_event, session) => {
     await checkAccess();
   } catch (error) {
     showView("login");
-    $("#login-message").textContent = errorMessage(error);
+    showAlert(errorMessage(error));
   }
 })();

@@ -172,6 +172,21 @@ export function downloadCsv(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+// Kehadiran adik pada satu sesi. attended = false berarti terdaftar tapi tidak hadir.
+// Data lama (sebelum ada daftar hadir) dianggap hadir.
+export function attendanceStudentStats(row) {
+  const list = row.attendance_students || [];
+  return { registered: list, present: list.filter((s) => s.attended !== false), absent: list.filter((s) => s.attended === false) };
+}
+
+// Sel tabel: "3 hadir" + keterangan "1 tidak hadir" di bawahnya.
+export function studentCountCell(row) {
+  const { registered, present, absent } = attendanceStudentStats(row);
+  if (!registered.length) return `${escapeHtml(row.student_count ?? 0)} adik`;
+  if (!row.clock_out_at) return `${registered.length} terdaftar`;
+  return `${present.length} hadir${absent.length ? `<span class="cell-subtext absent-note">${absent.length} tidak hadir</span>` : ""}`;
+}
+
 // Isi dialog detail sesi yang sama untuk PSD dan PJ.
 // names = { teacher, program } sudah berupa teks biasa.
 export function attendanceDetailHtml(row, names) {
@@ -203,15 +218,29 @@ export function attendanceDetailHtml(row, names) {
       <dt>Catatan guru</dt><dd>${escapeHtml(row.note || "-")}</dd>
       ${row.review_status === "rejected" ? `<dt>Alasan ditolak</dt><dd>${escapeHtml(row.review_note || "-")}</dd>` : ""}
     </dl>
-    <div class="form-section-title">Adik yang hadir (${students.length})</div>
-    ${students.length
-      ? `<ol class="recap-student-list">${students.map((s) => `<li><strong>${escapeHtml(s.student_name_snapshot)}</strong> <span class="cell-subtext">${escapeHtml(s.class_name_snapshot)}</span></li>`).join("")}</ol>`
-      : '<p class="form-hint">Tidak ada snapshot adik yang dapat dibaca untuk sesi ini.</p>'}
+    ${studentListsHtml(row, students)}
     <div class="form-section-title">Foto bukti</div>
     <div class="recap-photo-grid">
       <div><span class="form-hint">Absen masuk</span><div id="recap-photo-in" class="form-hint">Memuat foto...</div></div>
       <div><span class="form-hint">Absen keluar</span><div id="recap-photo-out" class="form-hint">${isCancel ? "Tidak ada (cancel class)." : "Memuat foto..."}</div></div>
     </div>`;
+}
+
+function studentListHtml(list) {
+  return `<ol class="recap-student-list">${list.map((s) => `<li><strong>${escapeHtml(s.student_name_snapshot)}</strong> <span class="cell-subtext">${escapeHtml(s.class_name_snapshot)}</span></li>`).join("")}</ol>`;
+}
+
+// Daftar adik di dialog detail: hadir dan tidak hadir dipisah agar PSD tahu kuota mana yang perlu dihanguskan.
+function studentListsHtml(row, sorted) {
+  if (!sorted.length) return '<div class="form-section-title">Adik</div><p class="form-hint">Tidak ada snapshot adik yang dapat dibaca untuk sesi ini.</p>';
+  if (!row.clock_out_at) return `<div class="form-section-title">Adik terdaftar (${sorted.length})</div>${studentListHtml(sorted)}<p class="form-hint">Daftar hadir diisi guru saat absen keluar.</p>`;
+  const present = sorted.filter((s) => s.attended !== false);
+  const absent = sorted.filter((s) => s.attended === false);
+  return `
+    <div class="form-section-title">Adik yang hadir (${present.length})</div>
+    ${present.length ? studentListHtml(present) : '<p class="form-hint">Tidak ada yang hadir.</p>'}
+    <div class="form-section-title absent-title">Terdaftar tapi tidak hadir (${absent.length})</div>
+    ${absent.length ? studentListHtml(absent) + '<p class="form-hint">Cek apakah kuota adik ini perlu dihanguskan.</p>' : '<p class="form-hint">Semua adik yang terdaftar hadir.</p>'}`;
 }
 
 // Foto ada di bucket privat, jadi dibuka lewat signed URL berumur 5 menit.
@@ -235,7 +264,7 @@ export async function showAttendancePhoto(supabase, path, targetId) {
 }
 
 // Kolom yang dibaca dari tabel attendance untuk rekap PSD, PJ, dan riwayat guru.
-export const ATTENDANCE_COLUMNS = "id, teacher_id, program_id, teaching_date, class_type, subject, method, note, student_count, clock_in_at, clock_out_at, clock_in_photo_path, clock_out_photo_path, clock_in_lat, clock_in_lng, clock_out_lat, clock_out_lng, auto_closed, is_legacy, special_rate_id, review_status, review_note, pj_checked_at, psd_checked_at, sent_at, attendance_students(student_id, student_name_snapshot, class_name_snapshot)";
+export const ATTENDANCE_COLUMNS = "id, teacher_id, program_id, teaching_date, class_type, subject, method, note, student_count, clock_in_at, clock_out_at, clock_in_photo_path, clock_out_photo_path, clock_in_lat, clock_in_lng, clock_out_lat, clock_out_lng, auto_closed, is_legacy, special_rate_id, review_status, review_note, pj_checked_at, psd_checked_at, sent_at, attendance_students(student_id, student_name_snapshot, class_name_snapshot, attended)";
 
 // Format rupiah: 150000 -> "Rp150.000"
 export function formatRupiah(value) {

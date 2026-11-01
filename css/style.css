@@ -345,3 +345,17 @@ tbody tr:hover { background: #fbfdfc; }
 .payroll-card { margin-bottom: 14px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; }
 .payroll-card h3 { font-size: 24px; margin: 4px 0; }
 @media (max-width: 760px) { .history-payroll { padding: 0 14px; } }
+
+/* Daftar kehadiran adik */
+.present-box { margin: 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; display: grid; gap: 12px; }
+.present-box legend { padding: 0 6px; font-size: 13px; font-weight: 800; color: var(--primary); }
+.present-box .form-hint { margin: 0; }
+.present-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.present-list { display: grid; gap: 8px; }
+.present-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; cursor: pointer; }
+.present-item input { width: 20px; height: 20px; flex: none; accent-color: var(--primary); }
+.present-item span { font-size: 14px; }
+.present-item small { color: var(--muted); }
+.absent-note { color: var(--danger); font-weight: 700; }
+.absent-title { color: var(--danger); }
+.swal2-container { font-family: inherit; }

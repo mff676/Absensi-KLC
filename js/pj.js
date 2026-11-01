@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "./config.js";
-import { METHOD_LABELS, ATTENDANCE_COLUMNS, statusKey, statusBadge, formatDate, formatTime, attendanceDetailHtml, showAttendancePhoto, formatRupiah, formatDateTime, monthToPeriod, previousMonthValue, formatMonth } from "./attendance-utils.js";
+import { notify as swalNotify, showAlert, confirmDialog } from "./alerts.js";
+import { METHOD_LABELS, ATTENDANCE_COLUMNS, statusKey, statusBadge, formatDate, formatTime, attendanceDetailHtml, showAttendancePhoto, formatRupiah, formatDateTime, monthToPeriod, previousMonthValue, formatMonth, studentCountCell } from "./attendance-utils.js";
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 const $ = (s) => document.querySelector(s);
 let user = null, managedPrograms = [], students = [];
@@ -20,9 +21,9 @@ function updateTopbarAuth(isLoggedIn) {
 }
 
 function esc(v="") { return String(v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;", "'":"&#39;"}[c])); }
-function notice(message, error=false) { const el=$("#pj-notice"); el.textContent=message; el.className=`notice ${error?'notice-error':'notice-success'}`; el.classList.remove("hidden"); }
+function notice(message, error=false) { swalNotify(message, error ? "error" : "success"); }
 function err(e) { console.error(e); return e?.message || "Terjadi kesalahan. Coba lagi."; }
-async function signIn() { const {error}=await supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+location.pathname}}); if(error) $("#pj-login-message").textContent=err(error); }
+async function signIn() { const {error}=await supabase.auth.signInWithOAuth({provider:"google",options:{redirectTo:location.origin+location.pathname}}); if(error) showAlert(err(error)); }
 async function signOut() { await supabase.auth.signOut(); location.reload(); }
 async function boot() {
   view("#pj-loading");
@@ -76,16 +77,16 @@ function openForm(s=null) {
 }
 async function saveStudent(event) {
   event.preventDefault(); const id=$("#pj-student-id").value||null, full_name=$("#pj-student-name").value.trim(), class_name=$("#pj-student-class").value.trim(), program_id=$("#pj-student-program").value, is_active=$("#pj-student-active").checked;
-  if(!full_name||!class_name||!program_id) { $("#pj-student-message").textContent="Nama, kelas, dan program wajib diisi."; return; }
-  if(!managedPrograms.some(p=>p.id===program_id)) { $("#pj-student-message").textContent="Program tidak termasuk penugasan PJ ini."; return; }
+  if(!full_name||!class_name||!program_id) { showAlert("Nama, kelas, dan program wajib diisi.", { icon: "warning" }); return; }
+  if(!managedPrograms.some(p=>p.id===program_id)) { showAlert("Program tidak termasuk penugasan PJ ini.", { icon: "warning" }); return; }
   const dup=students.find(s=>s.id!==id&&s.program_id===program_id&&s.class_name.toLocaleLowerCase("id")===class_name.toLocaleLowerCase("id")&&s.full_name.toLocaleLowerCase("id")===full_name.toLocaleLowerCase("id"));
-  if(dup) { $("#pj-student-message").textContent="Nama adik sudah terdaftar pada kelas dan program ini."; return; }
+  if(dup) { showAlert("Nama adik sudah terdaftar pada kelas dan program ini.", { icon: "warning" }); return; }
   const btn=$("#pj-save-student"); btn.disabled=true; btn.textContent="Menyimpan...";
   try {
     const payload={full_name,class_name,program_id,is_active};
     const result=id?await supabase.from("students").update(payload).eq("id",id):await supabase.from("students").insert(payload);
     if(result.error) throw result.error; await loadStudents(); $("#pj-student-dialog").close(); notice(id?"Data adik berhasil diperbarui.":"Adik berhasil ditambahkan.");
-  } catch(e) { $("#pj-student-message").textContent=err(e); }
+  } catch(e) { showAlert(err(e)); }
   finally { btn.disabled=false; btn.textContent="Simpan data"; }
 }
 function exportCsv() {
@@ -162,7 +163,7 @@ function renderPjAttendance() {
       <td>${esc(METHOD_LABELS[row.method] || "-")}</td>
       <td>${esc(formatTime(row.clock_in_at))}</td>
       <td>${row.method === "cancel" ? "-" : esc(formatTime(row.clock_out_at))}${row.auto_closed ? '<span class="cell-subtext">otomatis</span>' : ""}</td>
-      <td>${esc(row.student_count ?? row.attendance_students?.length ?? 0)}</td>
+      <td>${studentCountCell(row)}</td>
       <td>${statusBadge(row)}</td>
       <td><button class="row-action" type="button" data-pj-attendance="${esc(row.id)}">Detail</button></td>
     </tr>`).join("") : '<tr><td colspan="9" class="empty-cell">Tidak ada sesi untuk filter ini.</td></tr>';
@@ -190,7 +191,7 @@ function openPjDetail(id) {
 
 async function submitPjReview(decision) {
   const note = $("#pj-review-note").value.trim();
-  if (decision === "reject" && !note) { $("#pj-review-message").textContent = "Tulis alasan penolakan agar guru tahu apa yang harus diperbaiki."; return; }
+  if (decision === "reject" && !note) { showAlert("Tulis alasan penolakan agar guru tahu apa yang harus diperbaiki.", { icon: "warning" }); return; }
   const buttons = [$("#pj-approve-btn"), $("#pj-reject-btn")];
   buttons.forEach((b) => { b.disabled = true; });
   try {
@@ -199,7 +200,7 @@ async function submitPjReview(decision) {
     $("#pj-detail-dialog").close();
     notice(decision === "approve" ? "Sesi disetujui dan diteruskan ke PSD." : "Sesi ditolak. Guru bisa memperbaikinya dari riwayat.");
     await loadPjAttendance();
-  } catch (e) { $("#pj-review-message").textContent = err(e); }
+  } catch (e) { showAlert(err(e)); }
   finally { buttons.forEach((b) => { b.disabled = false; }); }
 }
 
@@ -270,9 +271,10 @@ async function loadPjPayroll() {
 
 async function accPjPayroll(teacherId, programId) {
   const row = pjPayrollRows.find((r) => r.teacher_id === teacherId && r.program_id === programId);
-  if (!row || !window.confirm(`ACC rekap ${row.teacher_name} (${row.program_name}) sebesar ${formatRupiah(row.total_fee)}? Setelah ACC, sesinya terkunci sampai PSD mengembalikan.`)) return;
+  if (!row) return;
+  if (!(await confirmDialog({ title: "ACC rekap gaji?", text: `${row.teacher_name} (${row.program_name}) sebesar ${formatRupiah(row.total_fee)}. Setelah ACC, sesinya terkunci sampai PSD mengembalikan.`, confirmText: "Ya, ACC" }))) return;
   const { error } = await supabase.rpc("pj_acc_payroll", { p_teacher_id: teacherId, p_program_id: programId, p_period: pjPayrollPeriod() });
-  if (error) { $("#pj-payroll-message").textContent = err(error); return; }
+  if (error) { showAlert(err(error)); return; }
   notice("Rekap di-ACC dan diteruskan ke PSD.");
   await loadPjPayroll();
 }
@@ -292,7 +294,7 @@ async function openPjPayrollDetail(teacherId, programId) {
     ${row.pj_acc_at ? `<p class="form-hint">ACC oleh ${esc(row.pj_acc_name || "-")} · ${esc(formatDateTime(row.pj_acc_at))}</p>` : ""}
     <div class="table-wrap"><table><thead><tr><th>Tanggal</th><th>Mapel</th><th>Metode</th><th>Adik</th><th>Status</th><th>Tarif</th><th>Fee</th></tr></thead><tbody>
       ${sessions.map((s) => `<tr><td>${esc(formatDate(s.teaching_date))}</td><td>${esc(s.subject || "-")}</td><td>${esc(METHOD_LABELS[s.method] || "-")}</td>
-        <td>${esc(s.student_count ?? "-")}</td><td>${statusBadge({ ...s, clock_out_at: true })}</td>
+        <td>${esc(s.student_count ?? "-")}${s.absent_names ? `<span class="cell-subtext absent-note">Tidak hadir: ${esc(s.absent_names)}</span>` : ""}</td><td>${statusBadge({ ...s, clock_out_at: true })}</td>
         <td>${esc(s.fee_manual ? "Manual (PSD)" : s.special_rate_name || "Standar")}</td><td>${s.fee == null ? "Tarif belum diatur" : esc(formatRupiah(s.fee))}</td></tr>`).join("")}
     </tbody></table></div>
     <div class="form-section-title">Penyesuaian dari PSD (seluruh gaji guru bulan ini)</div>
@@ -311,4 +313,4 @@ $("#pj-close-payroll").addEventListener("click", () => $("#pj-payroll-dialog").c
 $("#pj-close-payroll-bottom").addEventListener("click", () => $("#pj-payroll-dialog").close());
 
 supabase.auth.onAuthStateChange((_event,session)=>{  updateTopbarAuth(!!session?.user);if(!session){view("#pj-login");$("#pj-sign-out").classList.add("hidden");}});
-(async()=>{if(SUPABASE_URL.includes("YOUR_PROJECT")||SUPABASE_PUBLISHABLE_KEY.includes("YOUR_SUPABASE")){view("#pj-login");$("#pj-login-message").textContent="Isi konfigurasi Supabase di js/config.js terlebih dahulu.";return;}try{await boot();}catch(e){view("#pj-login");$("#pj-login-message").textContent=err(e);}})();
+(async()=>{if(SUPABASE_URL.includes("YOUR_PROJECT")||SUPABASE_PUBLISHABLE_KEY.includes("YOUR_SUPABASE")){view("#pj-login");$("#pj-login-message").textContent="Isi konfigurasi Supabase di js/config.js terlebih dahulu.";return;}try{await boot();}catch(e){view("#pj-login");showAlert(err(e));}})();

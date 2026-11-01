@@ -75,6 +75,21 @@
             <p class="eyebrow">SESI BERJALAN</p>
             <h3 id="open-session-title">Kamu sedang mengajar</h3>
             <p id="open-session-detail" class="muted"></p>
+            <fieldset class="present-box">
+              <legend>Adik yang hadir <span class="required">*</span></legend>
+              <p class="form-hint">Centang adik yang benar-benar hadir. Yang tidak dicentang dicatat tidak hadir.</p>
+              <div class="present-actions">
+                <button id="present-all-btn" class="button button-ghost" type="button">Centang semua</button>
+                <span id="present-count" class="form-hint"></span>
+              </div>
+              <div id="present-list" class="present-list"><span class="muted">Memuat daftar adik...</span></div>
+              <label class="form-field">
+                <span>Adik lain yang ikut hadir (opsional)</span>
+                <select id="present-extra" multiple size="4"></select>
+                <span class="form-hint">Untuk adik di luar daftar absen masuk. Total yang hadir maksimal 6.</span>
+              </label>
+              <p class="form-hint">Jika tidak ada yang hadir, sesi tercatat sebagai Cancel class dan catatan alasan wajib diisi.</p>
+            </fieldset>
             <label class="form-field">
               <span>Foto saat absen keluar <span class="required">*</span></span>
               <input id="clock-out-photo" type="file" accept="image/*" capture="environment">
@@ -442,7 +457,7 @@
                     <th>Metode</th>
                     <th>Jam masuk</th>
                     <th>Jam keluar</th>
-                    <th>Jumlah adik</th>
+                    <th>Adik hadir</th>
                     <th>Status</th>
                     <th><span class="sr-only">Aksi</span></th>
                   </tr>
@@ -613,10 +628,15 @@
           required></select></label>
       <label class="form-field"><span>Tarif khusus (opsional)</span><select id="fix-special-rate"></select></label>
       <div class="form-field">
-        <label for="fix-students">Adik yang hadir <span class="required">*</span></label>
+        <label for="fix-students">Adik yang terdaftar di kelas <span class="required">*</span></label>
         <select id="fix-students" multiple size="6"></select>
         <span class="form-hint">Pilih 1 sampai 6 nama.</span>
       </div>
+      <fieldset id="fix-present-wrap" class="present-box">
+        <legend>Adik yang hadir <span class="required">*</span></legend>
+        <div id="fix-present-list" class="present-list"></div>
+        <p class="form-hint">Centang minimal 1 adik yang hadir.</p>
+      </fieldset>
       <label class="form-field"><span>Catatan</span><textarea id="fix-note" rows="3"
           maxlength="1000"></textarea></label>
       <label class="form-field"><span>Ganti foto absen masuk (opsional)</span><input id="fix-photo-in" type="file"
@@ -723,6 +743,7 @@
     </form>
   </dialog>
 
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.14.5/dist/sweetalert2.all.min.js"></script>
   <script type="module" src="./js/app.js"></script>
 </body>
 
