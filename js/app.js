@@ -1782,9 +1782,7 @@ async function loadTeacherPayroll() {
   const { data, error } = await supabase.rpc("get_my_payroll", { p_period: monthToPeriod(month) });
   if (error) { box.innerHTML = `<p class="message">${escapeHtml(errorMessage(error))}</p>`; return; }
   if (!data?.released) {
-    box.innerHTML = `<div class="notice">Rekap gaji ${escapeHtml(formatMonth(month))} belum tersedia. ${data?.approved
-      ? `Sudah disetujui PSD dan tampil mulai ${escapeHtml(formatDateTime(data.release_at))}.`
-      : "Tampil setelah semua absen disetujui PJ dan rekap disetujui PSD, mulai Minggu pertama bulan berikutnya."}</div>`;
+    box.innerHTML = `<div class="notice">Rekap gaji ${escapeHtml(formatMonth(month))} belum tersedia. Ditunggu Bulan depan yapp.</div>`
     return;
   }
   const sessionTotal = data.sessions.reduce((sum, s) => sum + (s.fee || 0), 0);
