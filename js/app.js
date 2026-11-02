@@ -7,6 +7,7 @@ import {
 } from "./attendance-utils.js";
 import { LEGACY_HEADERS, prepareLegacyRows } from "./legacy-import.js";
 import { notify, showAlert, confirmDialog } from "./alerts.js";
+import { setBadge, reminderPeriod, pendingSessions, psdPayrollCounts } from "./reminders.js";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 
@@ -289,6 +290,7 @@ async function submitReview(decision) {
     $("#attendance-detail-dialog").close();
     showNotice(decision === "approve" ? "Sesi disetujui." : "Sesi ditolak. Guru bisa memperbaikinya dari riwayat.");
     await loadAttendanceRecap();
+    refreshPsdBadges();
   } catch (error) {
     showAlert(errorMessage(error));
   } finally {
@@ -424,6 +426,39 @@ async function checkAccess() {
   $("#add-teacher-btn").disabled = false;
   showView("app");
   await loadTeachers();
+  refreshPsdBadges();
+}
+
+// Angka pengingat di menu PSD. Gagal memuat tidak boleh mengganggu halaman, jadi hanya dicatat di console.
+async function refreshPsdBadges() {
+  if (!isPsd) return;
+  try {
+    const [pending, managers, overview] = await Promise.all([
+      pendingSessions(supabase),
+      supabase.rpc("psd_list_program_managers"),
+      supabase.rpc("payroll_overview", { p_period: reminderPeriod() })
+    ]);
+    if (managers.error) throw managers.error;
+    if (overview.error) throw overview.error;
+    // Sesi yang hanya bisa dicek PSD: program tanpa PJ aktif, atau sesi milik PJ-nya sendiri.
+    const activePj = new Map();
+    (managers.data || []).filter((m) => m.is_active).forEach((m) => {
+      if (!activePj.has(m.program_id)) activePj.set(m.program_id, new Set());
+      activePj.get(m.program_id).add(m.profile_id);
+    });
+    const profileOf = new Map(teacherRows.map((t) => [t.id, t.profile_id]));
+    const mine = pending.filter((row) => {
+      const pjs = activePj.get(row.program_id);
+      return !pjs || pjs.has(profileOf.get(row.teacher_id));
+    }).length;
+    const counts = psdPayrollCounts(overview.data || []);
+    const link = (name) => document.querySelector(`.sidebar-link[data-psd-section="${name}"]`);
+    setBadge(link("attendance"), mine, { title: "sesi menunggu dicek PSD (program tanpa PJ atau milik PJ sendiri)" });
+    setBadge(link("payroll"), counts.waitingPsd, { title: "rekap guru menunggu persetujuan PSD" });
+    setBadge(link("payroll"), counts.waitingPj, { kind: "info", title: "rekap guru masih menunggu ACC PJ" });
+  } catch (error) {
+    console.warn("Angka pengingat gagal dimuat:", error);
+  }
 }
 
 async function loadTeachers() {
@@ -1667,6 +1702,7 @@ async function runPayrollAction(rpcName, args, successText) {
   if (error) { showAlert(errorMessage(error)); return; }
   showNotice(successText);
   await loadPayroll();
+  refreshPsdBadges();
   if (payrollTeachers().some((t) => t.id === payrollTeacherId)) await openPayrollDialog(payrollTeacherId);
   else $("#payroll-dialog").close();
 }

@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "./config.js";
+import { setBadge, reminderPeriod, pendingSessions, pjPayrollCount } from "./reminders.js";
 import { notify as swalNotify, showAlert, confirmDialog } from "./alerts.js";
 import { METHOD_LABELS, ATTENDANCE_COLUMNS, statusKey, statusBadge, formatDate, formatTime, attendanceDetailHtml, showAttendancePhoto, formatRupiah, formatDateTime, monthToPeriod, previousMonthValue, formatMonth, studentCountCell } from "./attendance-utils.js";
 const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
@@ -57,6 +58,26 @@ $("#pj-sign-out").classList.remove("hidden");
   const select=$("#pj-program-filter"); select.innerHTML='<option value="all">Semua program yang dikelola</option>'+managedPrograms.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
   $("#pj-student-program").innerHTML=managedPrograms.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("");
   view("#pj-app"); await loadStudents();
+  refreshPjBadges();
+}
+
+// Angka pengingat di tab PJ. Gagal memuat tidak boleh mengganggu halaman, jadi hanya dicatat di console.
+async function refreshPjBadges() {
+  try {
+    const [own, pending, overview] = await Promise.all([
+      supabase.from("teachers").select("id").eq("profile_id", user.id).maybeSingle(),
+      pendingSessions(supabase, managedPrograms.map((p) => p.id)),
+      supabase.rpc("payroll_overview", { p_period: reminderPeriod() })
+    ]);
+    if (overview.error) throw overview.error;
+    const ownId = own.data?.id || null;
+    const tab = (name) => document.querySelector(`[data-pj-tab="${name}"]`);
+    // Sesi milikmu sendiri dicek PSD, jadi tidak dihitung.
+    setBadge(tab("attendance"), pending.filter((row) => row.teacher_id !== ownId).length, { title: "sesi menunggu dicek" });
+    setBadge(tab("payroll"), pjPayrollCount(overview.data || []), { title: "rekap siap di-ACC atau dikembalikan PSD" });
+  } catch (error) {
+    console.warn("Angka pengingat gagal dimuat:", error);
+  }
 }
 async function loadStudents() {
   const {data,error}=await supabase.from("students").select("id, class_name, full_name, program_id, is_active, created_at, updated_at").order("class_name").order("full_name");
@@ -200,6 +221,7 @@ async function submitPjReview(decision) {
     $("#pj-detail-dialog").close();
     notice(decision === "approve" ? "Sesi disetujui dan diteruskan ke PSD." : "Sesi ditolak. Guru bisa memperbaikinya dari riwayat.");
     await loadPjAttendance();
+    refreshPjBadges();
   } catch (e) { showAlert(err(e)); }
   finally { buttons.forEach((b) => { b.disabled = false; }); }
 }
@@ -277,6 +299,7 @@ async function accPjPayroll(teacherId, programId) {
   if (error) { showAlert(err(error)); return; }
   notice("Rekap di-ACC dan diteruskan ke PSD.");
   await loadPjPayroll();
+  refreshPjBadges();
 }
 
 async function openPjPayrollDetail(teacherId, programId) {

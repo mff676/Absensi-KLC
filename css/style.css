@@ -359,3 +359,10 @@ tbody tr:hover { background: #fbfdfc; }
 .absent-note { color: var(--danger); font-weight: 700; }
 .absent-title { color: var(--danger); }
 .swal2-container { font-family: inherit; }
+
+/* Angka pengingat di menu */
+.nav-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; margin-left: 6px; border-radius: 999px; font-size: 11px; font-weight: 800; line-height: 1; color: #fff; }
+.nav-badge-action { background: var(--danger); }
+.nav-badge-info { background: var(--gray); }
+.sidebar-link .nav-badge { margin-left: auto; }
+.sidebar-link .nav-badge + .nav-badge { margin-left: 6px; }
